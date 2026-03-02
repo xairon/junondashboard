@@ -23,7 +23,7 @@ export function StationPopup({ station, type, onClose }: Props) {
     ? station.niveau_derniere_annee
     : station.resultat_moyen_global
 
-  const unit = type === 'piezo' ? 'm NGF' : 'm\u00b3/s'
+  const unit = type === 'piezo' ? 'm NGF' : 'm³/s'
   const dept = station.nom_departement ?? station.code_departement ?? ''
 
   return (
@@ -31,7 +31,7 @@ export function StationPopup({ station, type, onClose }: Props) {
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1 min-w-0">
           <p className="text-xs text-accent-cyan font-medium uppercase tracking-wide mb-1">
-            {type === 'piezo' ? 'Pi\u00e9zom\u00e9trie' : 'Hydrom\u00e9trie'}
+            {type === 'piezo' ? 'Piézométrie' : 'Hydrométrie'}
           </p>
           <h3 className="text-sm font-semibold text-text-primary truncate">{name}</h3>
           <p className="text-xs text-text-secondary">{dept} &middot; {code}</p>
@@ -60,7 +60,7 @@ export function StationPopup({ station, type, onClose }: Props) {
         to={`/station/${type}/${code}`}
         className="flex items-center gap-1.5 text-xs text-accent-cyan hover:text-accent-cyan/80 transition-colors"
       >
-        Voir les d\u00e9tails <ExternalLink className="w-3 h-3" />
+        Voir les détails <ExternalLink className="w-3 h-3" />
       </Link>
     </div>
   )

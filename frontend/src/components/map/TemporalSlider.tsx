@@ -11,8 +11,8 @@ interface Props {
 }
 
 const VARIABLE_LABELS: { key: 'total_precipitation' | 'temperature_2m'; label: string }[] = [
-  { key: 'total_precipitation', label: 'Pr\u00e9cipitations' },
-  { key: 'temperature_2m', label: 'Temp\u00e9rature' },
+  { key: 'total_precipitation', label: 'Précipitations' },
+  { key: 'temperature_2m', label: 'Température' },
 ]
 
 export function TemporalSlider({
@@ -54,7 +54,7 @@ export function TemporalSlider({
 
       <button
         onClick={() => onIndexChange(Math.max(0, currentIndex - 1))}
-        aria-label="Mois pr\u00e9c\u00e9dent"
+        aria-label="Mois précédent"
         className="text-text-secondary hover:text-text-primary transition-colors"
         disabled={currentIndex === 0}
       >

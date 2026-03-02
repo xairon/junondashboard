@@ -153,7 +153,7 @@ export default function StationPage() {
   if (!station) {
     return (
       <div className="flex items-center justify-center h-full text-text-secondary" role="alert">
-        Station non trouv\u00e9e
+        Station non trouvée
       </div>
     )
   }
@@ -181,12 +181,12 @@ export default function StationPage() {
           </Link>
           <div>
             <p className="text-xs text-accent-cyan font-medium uppercase tracking-wide">
-              {isPiezo ? 'Pi\u00e9zom\u00e9trie' : 'Hydrom\u00e9trie'}
+              {isPiezo ? 'Piézométrie' : 'Hydrométrie'}
             </p>
             <h1 className="text-xl font-bold text-text-primary">{name}</h1>
             <p className="text-sm text-text-secondary">
               {station.nom_departement ?? ''} &middot; {code}
-              {!isPiezo && station.nom_cours_eau && ` \u00b7 ${station.nom_cours_eau}`}
+              {!isPiezo && station.nom_cours_eau && ` · ${station.nom_cours_eau}`}
             </p>
           </div>
         </div>
@@ -196,7 +196,7 @@ export default function StationPage() {
 
         {/* Resolution selector */}
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-xs text-text-secondary font-medium">R\u00e9solution :</span>
+          <span className="text-xs text-text-secondary font-medium">Résolution :</span>
           <div role="group" aria-label="Résolution temporelle" className="flex gap-1">
             {RESOLUTION_OPTIONS.map((opt) => (
               <button
@@ -250,7 +250,7 @@ export default function StationPage() {
           </div>
         ) : (
           <div className="bg-bg-card border border-white/5 rounded-xl p-5 flex items-center justify-center h-64 text-text-secondary text-sm">
-            Aucune donn\u00e9e pour cette r\u00e9solution
+            Aucune donnée pour cette résolution
           </div>
         )}
 
@@ -262,7 +262,7 @@ export default function StationPage() {
                 data={monthly}
                 xKey="precipitation_totale"
                 yKey={isPiezo ? 'niveau_moyen' : 'resultat_moyen'}
-                xLabel="Pr\u00e9cipitations (mm)"
+                xLabel="Précipitations (mm)"
                 yLabel={valueLabel}
               />
             </div>

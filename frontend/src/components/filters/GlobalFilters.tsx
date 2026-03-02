@@ -62,7 +62,7 @@ export function GlobalFilters({ filters, setFilter, totalCount, filteredCount }:
             </div>
 
             <div>
-              <label className="text-xs text-text-secondary block mb-1">Derni\u00e8re mesure apr\u00e8s</label>
+              <label className="text-xs text-text-secondary block mb-1">Dernière mesure après</label>
               <input
                 type="date"
                 value={filters.lastMeasurementAfter ?? ''}
@@ -104,7 +104,7 @@ export function GlobalFilters({ filters, setFilter, totalCount, filteredCount }:
             </div>
 
             <div>
-              <label className="text-xs text-text-secondary block mb-1">D\u00e9partement</label>
+              <label className="text-xs text-text-secondary block mb-1">Département</label>
               <input
                 type="text"
                 value={filters.codeDepartement ?? ''}
@@ -120,7 +120,7 @@ export function GlobalFilters({ filters, setFilter, totalCount, filteredCount }:
                 className="flex items-center gap-1.5 w-full justify-center px-3 py-2 rounded-lg text-xs font-medium text-text-secondary hover:text-text-primary bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
               >
                 <RotateCcw className="w-3 h-3" />
-                R\u00e9initialiser
+                Réinitialiser
               </button>
             )}
           </div>

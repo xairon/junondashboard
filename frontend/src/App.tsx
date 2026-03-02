@@ -40,7 +40,7 @@ class ErrorBoundary extends Component<
               cursor: 'pointer',
             }}
           >
-            R\u00e9essayer
+            Réessayer
           </button>
         </div>
       )

@@ -59,7 +59,7 @@ export function CorrelationScatter({ data, xKey, yKey, xLabel, yLabel }: Props) 
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-text-primary">Corr\u00e9lation</h3>
+        <h3 className="text-sm font-semibold text-text-primary">Corrélation</h3>
         <div className="flex items-center gap-2">
           <span className="text-xs text-text-secondary">Lag:</span>
           {LAG_OPTIONS.map((l) => (
@@ -74,12 +74,12 @@ export function CorrelationScatter({ data, xKey, yKey, xLabel, yLabel }: Props) 
           ))}
           {correlation !== null && (
             <span className="text-xs text-gray-400 ml-2">
-              \u03c1 = {correlation.toFixed(3)}
+              ρ = {correlation.toFixed(3)}
             </span>
           )}
         </div>
       </div>
-      <div role="img" aria-label={`Graphique de corr\u00e9lation entre ${xLabel} et ${yLabel}`}>
+      <div role="img" aria-label={`Graphique de corrélation entre ${xLabel} et ${yLabel}`}>
         <ResponsiveContainer width="100%" height={250}>
           <ScatterChart margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />

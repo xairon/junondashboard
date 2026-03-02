@@ -192,7 +192,7 @@ export default function ObservatoryPage() {
       {freshness && (
         <div className="absolute top-4 right-14 z-10 bg-bg-card/90 backdrop-blur-sm border border-white/10 rounded-lg px-2.5 py-1.5">
           <p className="text-[10px] text-text-secondary">
-            Derni\u00e8re MAJ : <span className="text-text-primary font-medium">{formatRelativeTime(freshness)}</span>
+            Dernière MAJ : <span className="text-text-primary font-medium">{formatRelativeTime(freshness)}</span>
           </p>
         </div>
       )}

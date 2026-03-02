@@ -8,8 +8,8 @@ interface Props {
 
 export function StationKPICards({ station, type }: Props) {
   const isHauteur = station?.grandeur_hydro_principale === 'H'
-  const hydroLabel = isHauteur ? 'Hauteur moyenne' : 'D\u00e9bit moyen'
-  const hydroUnit = isHauteur ? 'm' : 'm\u00b3/s'
+  const hydroLabel = isHauteur ? 'Hauteur moyenne' : 'Débit moyen'
+  const hydroUnit = isHauteur ? 'm' : 'm³/s'
 
   const cards = type === 'piezo'
     ? [
@@ -23,18 +23,18 @@ export function StationKPICards({ station, type }: Props) {
           title: 'Tendance',
           value: station.slope_niveau != null ? `${station.slope_niveau > 0 ? '+' : ''}${formatNumber(station.slope_niveau, 3)}` : 'N/A',
           unit: 'm/an',
-          sub: station.r2_niveau != null ? <span className="text-xs text-text-secondary">R\u00b2 = {formatNumber(station.r2_niveau, 2)}</span> : null,
+          sub: station.r2_niveau != null ? <span className="text-xs text-text-secondary">R² = {formatNumber(station.r2_niveau, 2)}</span> : null,
         },
         {
-          title: 'Pr\u00e9cipitations moy.',
+          title: 'Précipitations moy.',
           value: formatNumber(station.precipitation_moyenne_mensuelle),
           unit: 'mm/mois',
           sub: null,
         },
         {
-          title: 'Temp\u00e9rature moy.',
+          title: 'Température moy.',
           value: formatNumber(station.temperature_moyenne_globale),
-          unit: '\u00b0C',
+          unit: '°C',
           sub: null,
         },
       ]
@@ -52,7 +52,7 @@ export function StationKPICards({ station, type }: Props) {
           sub: null,
         },
         {
-          title: '\u00c9cart-type',
+          title: 'Écart-type',
           value: formatNumber(station.resultat_stddev_global, 2),
           unit: hydroUnit,
           sub: null,

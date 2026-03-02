@@ -8,12 +8,12 @@ export const CLASSIFICATION_COLORS = {
 } as const satisfies Record<string, string>
 
 export const CLASSIFICATION_LABELS = {
-  TRES_BAS: 'Tr\u00e8s bas',
+  TRES_BAS: 'Très bas',
   BAS: 'Bas',
   NORMAL: 'Normal',
   HAUT: 'Haut',
-  TRES_HAUT: 'Tr\u00e8s haut',
-  UNKNOWN: 'Non class\u00e9',
+  TRES_HAUT: 'Très haut',
+  UNKNOWN: 'Non classé',
 } as const satisfies Record<string, string>
 
 export const CLASSIFICATION_ORDER = ['TRES_BAS', 'BAS', 'NORMAL', 'HAUT', 'TRES_HAUT'] as const

@@ -35,7 +35,7 @@ export function TimeseriesChart({ data, valueKey, valueLabel, unit, precipKey = 
   }, [data, period])
 
   if (!filteredData.length) {
-    return <div className="flex items-center justify-center h-64 text-text-secondary text-sm">Aucune donn\u00e9e</div>
+    return <div className="flex items-center justify-center h-64 text-text-secondary text-sm">Aucune donnée</div>
   }
 
   return (
@@ -59,7 +59,7 @@ export function TimeseriesChart({ data, valueKey, valueLabel, unit, precipKey = 
           ))}
         </div>
       </div>
-      <div role="img" aria-label={`Graphique chronologique montrant l'\u00e9volution des mesures`}>
+      <div role="img" aria-label={`Graphique chronologique montrant l'évolution des mesures`}>
         <ResponsiveContainer width="100%" height={320}>
           <ComposedChart data={filteredData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
@@ -96,7 +96,7 @@ export function TimeseriesChart({ data, valueKey, valueLabel, unit, precipKey = 
               fill="rgba(56,189,248,0.15)"
               stroke="rgba(56,189,248,0.4)"
               strokeWidth={1}
-              name="Pr\u00e9cipitations (mm)"
+              name="Précipitations (mm)"
             />
             <Line
               yAxisId="left"

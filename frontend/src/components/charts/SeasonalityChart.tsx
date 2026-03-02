@@ -5,7 +5,7 @@ import {
 } from 'recharts'
 import { CHART_TOOLTIP_STYLE } from '../../lib/types'
 
-const MONTH_LABELS_HYDRO = ['Sep', 'Oct', 'Nov', 'D\u00e9c', 'Jan', 'F\u00e9v', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Ao\u00fb']
+const MONTH_LABELS_HYDRO = ['Sep', 'Oct', 'Nov', 'Déc', 'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû']
 const YEAR_COLORS = ['#06b6d4', '#6366f1', '#f97316', '#10b981', '#ef4444', '#8b5cf6', '#f59e0b', '#ec4899']
 
 interface Props {
@@ -46,8 +46,8 @@ export function SeasonalityChart({ data, valueKey, label }: Props) {
 
   return (
     <div>
-      <h3 className="text-sm font-semibold text-text-primary mb-3">Saisonnalit\u00e9 - {label}</h3>
-      <div role="img" aria-label={`Graphique de saisonnalit\u00e9 pour ${label}`}>
+      <h3 className="text-sm font-semibold text-text-primary mb-3">Saisonnalité - {label}</h3>
+      <div role="img" aria-label={`Graphique de saisonnalité pour ${label}`}>
         <ResponsiveContainer width="100%" height={250}>
           <LineChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />

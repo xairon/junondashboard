@@ -42,7 +42,7 @@ function MapLegend({
   ]
 
   const parts: string[] = []
-  if (showPiezo && piezoCount > 0) parts.push(`${piezoCount.toLocaleString('fr-FR')} stations pi\u00e9zo`)
+  if (showPiezo && piezoCount > 0) parts.push(`${piezoCount.toLocaleString('fr-FR')} stations piézo`)
   if (showHydro && hydroCount > 0) parts.push(`${hydroCount.toLocaleString('fr-FR')} stations hydro`)
 
   return (

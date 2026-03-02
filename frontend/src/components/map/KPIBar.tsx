@@ -19,12 +19,12 @@ export function KPIBar() {
   )
 
   const piezoItems = [
-    { label: 'Pi\u00e9zo', value: stats.total_piezo?.toLocaleString('fr-FR'), color: '#06b6d4' },
-    { label: 'Tr\u00e8s bas', value: stats.piezo_tres_bas?.toLocaleString('fr-FR'), color: CLASSIFICATION_COLORS.TRES_BAS },
+    { label: 'Piézo', value: stats.total_piezo?.toLocaleString('fr-FR'), color: '#06b6d4' },
+    { label: 'Très bas', value: stats.piezo_tres_bas?.toLocaleString('fr-FR'), color: CLASSIFICATION_COLORS.TRES_BAS },
     { label: 'Bas', value: stats.piezo_bas?.toLocaleString('fr-FR'), color: CLASSIFICATION_COLORS.BAS },
     { label: 'Normal', value: stats.piezo_normal?.toLocaleString('fr-FR'), color: CLASSIFICATION_COLORS.NORMAL },
     { label: 'Haut', value: stats.piezo_haut?.toLocaleString('fr-FR'), color: CLASSIFICATION_COLORS.HAUT },
-    { label: 'Tr\u00e8s haut', value: stats.piezo_tres_haut?.toLocaleString('fr-FR'), color: CLASSIFICATION_COLORS.TRES_HAUT },
+    { label: 'Très haut', value: stats.piezo_tres_haut?.toLocaleString('fr-FR'), color: CLASSIFICATION_COLORS.TRES_HAUT },
   ]
 
   // Build hydro items - show classification breakdown if available, otherwise just total
@@ -32,14 +32,14 @@ export function KPIBar() {
   const hydroItems = hasHydroClassif
     ? [
         { label: 'Hydro', value: stats.total_hydro?.toLocaleString('fr-FR'), color: '#6366f1' },
-        { label: 'Tr\u00e8s bas', value: (stats.hydro_tres_bas ?? 0).toLocaleString('fr-FR'), color: CLASSIFICATION_COLORS.TRES_BAS },
+        { label: 'Très bas', value: (stats.hydro_tres_bas ?? 0).toLocaleString('fr-FR'), color: CLASSIFICATION_COLORS.TRES_BAS },
         { label: 'Bas', value: (stats.hydro_bas ?? 0).toLocaleString('fr-FR'), color: CLASSIFICATION_COLORS.BAS },
         { label: 'Normal', value: (stats.hydro_normal ?? 0).toLocaleString('fr-FR'), color: CLASSIFICATION_COLORS.NORMAL },
         { label: 'Haut', value: (stats.hydro_haut ?? 0).toLocaleString('fr-FR'), color: CLASSIFICATION_COLORS.HAUT },
-        { label: 'Tr\u00e8s haut', value: (stats.hydro_tres_haut ?? 0).toLocaleString('fr-FR'), color: CLASSIFICATION_COLORS.TRES_HAUT },
+        { label: 'Très haut', value: (stats.hydro_tres_haut ?? 0).toLocaleString('fr-FR'), color: CLASSIFICATION_COLORS.TRES_HAUT },
       ]
     : [
-        { label: 'Stations hydrom\u00e9triques', value: stats.total_hydro?.toLocaleString('fr-FR'), color: '#6366f1' },
+        { label: 'Stations hydrométriques', value: stats.total_hydro?.toLocaleString('fr-FR'), color: '#6366f1' },
       ]
 
   return (
