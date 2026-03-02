@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date
 from typing import Literal, Optional
 
@@ -28,14 +29,6 @@ async def get_piezo_daily(
     params = {"code_bss": code_bss, "start_date": str(start_date), "end_date": str(end_date), "limit": limit}
 
     async def fetch():
-        # Check station exists
-        exists = await db.execute(
-            text("SELECT 1 FROM gold.dim_piezo_stations WHERE code_bss = :code"),
-            {"code": code_bss},
-        )
-        if exists.first() is None:
-            raise HTTPException(status_code=404, detail=f"Piezo station {code_bss} not found")
-
         query = """
             SELECT date, niveau_nappe_eau, profondeur_nappe,
                    temperature_2m, total_precipitation, potential_evaporation
@@ -52,7 +45,15 @@ async def get_piezo_daily(
         query += " ORDER BY date LIMIT :limit"
         bind_params["limit"] = limit
         result = await db.execute(text(query), bind_params)
-        return [dict(row) for row in result.mappings().all()]
+        rows = [dict(row) for row in result.mappings().all()]
+        if not rows:
+            exists = await db.execute(
+                text("SELECT 1 FROM gold.dim_piezo_stations WHERE code_bss = :code"),
+                {"code": code_bss},
+            )
+            if exists.first() is None:
+                raise HTTPException(status_code=404, detail=f"Piezo station {code_bss} not found")
+        return rows
 
     return await cached_response("piezo_daily", params, DAILY_TTL, fetch)
 
@@ -68,14 +69,6 @@ async def get_hydro_daily(
     params = {"code_station": code_station, "start_date": str(start_date), "end_date": str(end_date), "limit": limit}
 
     async def fetch():
-        # Check station exists
-        exists = await db.execute(
-            text("SELECT 1 FROM gold.dim_hydro_stations WHERE code_station = :code"),
-            {"code": code_station},
-        )
-        if exists.first() is None:
-            raise HTTPException(status_code=404, detail=f"Hydro station {code_station} not found")
-
         query = """
             SELECT date, resultat_obs_elab, grandeur_hydro_elab,
                    temperature_2m, total_precipitation, potential_evaporation
@@ -92,7 +85,15 @@ async def get_hydro_daily(
         query += " ORDER BY date LIMIT :limit"
         bind_params["limit"] = limit
         result = await db.execute(text(query), bind_params)
-        return [dict(row) for row in result.mappings().all()]
+        rows = [dict(row) for row in result.mappings().all()]
+        if not rows:
+            exists = await db.execute(
+                text("SELECT 1 FROM gold.dim_hydro_stations WHERE code_station = :code"),
+                {"code": code_station},
+            )
+            if exists.first() is None:
+                raise HTTPException(status_code=404, detail=f"Hydro station {code_station} not found")
+        return rows
 
     return await cached_response("hydro_daily", params, DAILY_TTL, fetch)
 
@@ -102,19 +103,12 @@ async def get_piezo_monthly(
     code_bss: str,
     start_date: Optional[date] = Query(None, description="Filter mois >= start_date"),
     end_date: Optional[date] = Query(None, description="Filter mois <= end_date"),
+    limit: int = Query(600, ge=1, le=1200, description="Max rows returned"),
     db: AsyncSession = Depends(get_db),
 ):
-    params = {"code_bss": code_bss, "start_date": str(start_date), "end_date": str(end_date)}
+    params = {"code_bss": code_bss, "start_date": str(start_date), "end_date": str(end_date), "limit": limit}
 
     async def fetch():
-        # Check station exists
-        exists = await db.execute(
-            text("SELECT 1 FROM gold.dim_piezo_stations WHERE code_bss = :code"),
-            {"code": code_bss},
-        )
-        if exists.first() is None:
-            raise HTTPException(status_code=404, detail=f"Piezo station {code_bss} not found")
-
         query = """
             SELECT mois, niveau_moyen, niveau_min, niveau_max, amplitude_mensuelle,
                    temperature_moyenne, precipitation_totale, evaporation_moyenne,
@@ -131,9 +125,18 @@ async def get_piezo_monthly(
         if end_date is not None:
             query += " AND mois <= :end_date"
             bind_params["end_date"] = end_date
-        query += " ORDER BY mois"
+        query += " ORDER BY mois LIMIT :limit"
+        bind_params["limit"] = limit
         result = await db.execute(text(query), bind_params)
-        return [dict(row) for row in result.mappings().all()]
+        rows = [dict(row) for row in result.mappings().all()]
+        if not rows:
+            exists = await db.execute(
+                text("SELECT 1 FROM gold.dim_piezo_stations WHERE code_bss = :code"),
+                {"code": code_bss},
+            )
+            if exists.first() is None:
+                raise HTTPException(status_code=404, detail=f"Piezo station {code_bss} not found")
+        return rows
 
     return await cached_response("piezo_monthly", params, MONTHLY_TTL, fetch)
 
@@ -143,19 +146,12 @@ async def get_hydro_monthly(
     code_station: str,
     start_date: Optional[date] = Query(None, description="Filter mois >= start_date"),
     end_date: Optional[date] = Query(None, description="Filter mois <= end_date"),
+    limit: int = Query(600, ge=1, le=1200, description="Max rows returned"),
     db: AsyncSession = Depends(get_db),
 ):
-    params = {"code_station": code_station, "start_date": str(start_date), "end_date": str(end_date)}
+    params = {"code_station": code_station, "start_date": str(start_date), "end_date": str(end_date), "limit": limit}
 
     async def fetch():
-        # Check station exists
-        exists = await db.execute(
-            text("SELECT 1 FROM gold.dim_hydro_stations WHERE code_station = :code"),
-            {"code": code_station},
-        )
-        if exists.first() is None:
-            raise HTTPException(status_code=404, detail=f"Hydro station {code_station} not found")
-
         query = """
             SELECT mois, resultat_moyen, resultat_min, resultat_max, amplitude_mensuelle,
                    temperature_moyenne, precipitation_totale, evaporation_moyenne,
@@ -172,9 +168,18 @@ async def get_hydro_monthly(
         if end_date is not None:
             query += " AND mois <= :end_date"
             bind_params["end_date"] = end_date
-        query += " ORDER BY mois"
+        query += " ORDER BY mois LIMIT :limit"
+        bind_params["limit"] = limit
         result = await db.execute(text(query), bind_params)
-        return [dict(row) for row in result.mappings().all()]
+        rows = [dict(row) for row in result.mappings().all()]
+        if not rows:
+            exists = await db.execute(
+                text("SELECT 1 FROM gold.dim_hydro_stations WHERE code_station = :code"),
+                {"code": code_station},
+            )
+            if exists.first() is None:
+                raise HTTPException(status_code=404, detail=f"Hydro station {code_station} not found")
+        return rows
 
     return await cached_response("hydro_monthly", params, MONTHLY_TTL, fetch)
 
@@ -184,19 +189,12 @@ async def get_piezo_yearly(
     code_bss: str,
     start_date: Optional[date] = Query(None, description="Filter annee >= year of start_date"),
     end_date: Optional[date] = Query(None, description="Filter annee <= year of end_date"),
+    limit: int = Query(100, ge=1, le=200, description="Max rows returned"),
     db: AsyncSession = Depends(get_db),
 ):
-    params = {"code_bss": code_bss, "start_date": str(start_date), "end_date": str(end_date)}
+    params = {"code_bss": code_bss, "start_date": str(start_date), "end_date": str(end_date), "limit": limit}
 
     async def fetch():
-        # Check station exists
-        exists = await db.execute(
-            text("SELECT 1 FROM gold.dim_piezo_stations WHERE code_bss = :code"),
-            {"code": code_bss},
-        )
-        if exists.first() is None:
-            raise HTTPException(status_code=404, detail=f"Piezo station {code_bss} not found")
-
         query = """
             SELECT annee, niveau_moyen_annuel, niveau_min_annuel, niveau_max_annuel,
                    amplitude_annuelle, temperature_moyenne_annuelle,
@@ -213,9 +211,18 @@ async def get_piezo_yearly(
         if end_date is not None:
             query += " AND annee <= :end_year"
             bind_params["end_year"] = end_date.year
-        query += " ORDER BY annee"
+        query += " ORDER BY annee LIMIT :limit"
+        bind_params["limit"] = limit
         result = await db.execute(text(query), bind_params)
-        return [dict(row) for row in result.mappings().all()]
+        rows = [dict(row) for row in result.mappings().all()]
+        if not rows:
+            exists = await db.execute(
+                text("SELECT 1 FROM gold.dim_piezo_stations WHERE code_bss = :code"),
+                {"code": code_bss},
+            )
+            if exists.first() is None:
+                raise HTTPException(status_code=404, detail=f"Piezo station {code_bss} not found")
+        return rows
 
     return await cached_response("piezo_yearly", params, YEARLY_TTL, fetch)
 
@@ -225,19 +232,12 @@ async def get_hydro_yearly(
     code_station: str,
     start_date: Optional[date] = Query(None, description="Filter annee >= year of start_date"),
     end_date: Optional[date] = Query(None, description="Filter annee <= year of end_date"),
+    limit: int = Query(100, ge=1, le=200, description="Max rows returned"),
     db: AsyncSession = Depends(get_db),
 ):
-    params = {"code_station": code_station, "start_date": str(start_date), "end_date": str(end_date)}
+    params = {"code_station": code_station, "start_date": str(start_date), "end_date": str(end_date), "limit": limit}
 
     async def fetch():
-        # Check station exists
-        exists = await db.execute(
-            text("SELECT 1 FROM gold.dim_hydro_stations WHERE code_station = :code"),
-            {"code": code_station},
-        )
-        if exists.first() is None:
-            raise HTTPException(status_code=404, detail=f"Hydro station {code_station} not found")
-
         query = """
             SELECT annee, resultat_moyen_annuel, resultat_min_annuel, resultat_max_annuel,
                    amplitude_annuelle, temperature_moyenne_annuelle,
@@ -253,9 +253,18 @@ async def get_hydro_yearly(
         if end_date is not None:
             query += " AND annee <= :end_year"
             bind_params["end_year"] = end_date.year
-        query += " ORDER BY annee"
+        query += " ORDER BY annee LIMIT :limit"
+        bind_params["limit"] = limit
         result = await db.execute(text(query), bind_params)
-        return [dict(row) for row in result.mappings().all()]
+        rows = [dict(row) for row in result.mappings().all()]
+        if not rows:
+            exists = await db.execute(
+                text("SELECT 1 FROM gold.dim_hydro_stations WHERE code_station = :code"),
+                {"code": code_station},
+            )
+            if exists.first() is None:
+                raise HTTPException(status_code=404, detail=f"Hydro station {code_station} not found")
+        return rows
 
     return await cached_response("hydro_yearly", params, YEARLY_TTL, fetch)
 
@@ -276,9 +285,7 @@ async def compare_stations(
     params = {"stations": sorted(stations), "type": type, "granularity": granularity}
 
     async def fetch():
-        result_dict = {}
-
-        for station_code in stations:
+        async def fetch_one(station_code: str):
             if type == "piezo":
                 if granularity == "daily":
                     query = """
@@ -313,8 +320,9 @@ async def compare_stations(
                     """
 
             res = await db.execute(text(query), {"code": station_code})
-            result_dict[station_code] = [dict(row) for row in res.mappings().all()]
+            return station_code, [dict(row) for row in res.mappings().all()]
 
-        return result_dict
+        results = await asyncio.gather(*(fetch_one(code) for code in stations))
+        return {code: rows for code, rows in results}
 
     return await cached_response("compare", params, COMPARE_TTL, fetch)

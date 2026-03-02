@@ -7,6 +7,10 @@ interface Props {
 }
 
 export function StationKPICards({ station, type }: Props) {
+  const isHauteur = station?.grandeur_hydro_principale === 'H'
+  const hydroLabel = isHauteur ? 'Hauteur moyenne' : 'D\u00e9bit moyen'
+  const hydroUnit = isHauteur ? 'm' : 'm\u00b3/s'
+
   const cards = type === 'piezo'
     ? [
         {
@@ -19,16 +23,16 @@ export function StationKPICards({ station, type }: Props) {
           title: 'Tendance',
           value: station.slope_niveau != null ? `${station.slope_niveau > 0 ? '+' : ''}${formatNumber(station.slope_niveau, 3)}` : 'N/A',
           unit: 'm/an',
-          sub: station.r2_niveau != null ? <span className="text-xs text-text-secondary">R² = {formatNumber(station.r2_niveau, 2)}</span> : null,
+          sub: station.r2_niveau != null ? <span className="text-xs text-text-secondary">R\u00b2 = {formatNumber(station.r2_niveau, 2)}</span> : null,
         },
         {
-          title: 'Precipitations moy.',
+          title: 'Pr\u00e9cipitations moy.',
           value: formatNumber(station.precipitation_moyenne_mensuelle),
           unit: 'mm/mois',
           sub: null,
         },
         {
-          title: 'Temperature moy.',
+          title: 'Temp\u00e9rature moy.',
           value: formatNumber(station.temperature_moyenne_globale),
           unit: '\u00b0C',
           sub: null,
@@ -36,21 +40,21 @@ export function StationKPICards({ station, type }: Props) {
       ]
     : [
         {
-          title: 'Debit moyen',
+          title: hydroLabel,
           value: formatNumber(station.resultat_moyen_global, 2),
-          unit: 'm\u00b3/s',
+          unit: hydroUnit,
           sub: <ClassificationBadge classification={station.classification_resultat_dern_annee} />,
         },
         {
           title: 'Min / Max',
           value: `${formatNumber(station.resultat_min_global)} / ${formatNumber(station.resultat_max_global)}`,
-          unit: 'm\u00b3/s',
+          unit: hydroUnit,
           sub: null,
         },
         {
-          title: 'Ecart-type',
+          title: '\u00c9cart-type',
           value: formatNumber(station.resultat_stddev_global, 2),
-          unit: 'm\u00b3/s',
+          unit: hydroUnit,
           sub: null,
         },
         {
@@ -62,7 +66,7 @@ export function StationKPICards({ station, type }: Props) {
       ]
 
   return (
-    <div className="grid grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
       {cards.map((card) => (
         <div key={card.title} className="bg-bg-card border border-white/5 rounded-xl p-4">
           <p className="text-xs text-text-secondary mb-2">{card.title}</p>

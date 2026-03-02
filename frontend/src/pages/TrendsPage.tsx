@@ -1,9 +1,10 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { api } from '../lib/api'
-import { CLASSIFICATION_COLORS, CLASSIFICATION_LABELS } from '../lib/constants'
+import { CLASSIFICATION_COLORS, CLASSIFICATION_LABELS, CLASSIFICATION_ORDER } from '../lib/constants'
+import { CHART_TOOLTIP_STYLE } from '../lib/types'
 import { usePiezoStations, useHydroStations } from '../hooks/useStations'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -61,7 +62,7 @@ export default function TrendsPage() {
       .map(([dept, classes]) => {
         const row: any = { departement: dept, _stationsByClass: classes }
         let total = 0
-        ;['TRES_BAS', 'BAS', 'NORMAL', 'HAUT', 'TRES_HAUT'].forEach(cls => {
+        ;(CLASSIFICATION_ORDER as readonly string[]).forEach(cls => {
           row[cls] = (classes[cls] ?? []).length
           total += row[cls]
         })
@@ -71,6 +72,25 @@ export default function TrendsPage() {
       .sort((a, b) => b._total - a._total)
       .slice(0, selectedDept ? 100 : 25)
   }, [piezoStations, hydroStations, dataType, selectedDept])
+
+  // Memoize top 20 departments ranking
+  const top20Depts = useMemo(() =>
+    (departments ?? [])
+      .filter((d: any) => d.pct_tres_bas != null)
+      .sort((a: any, b: any) => (b.pct_tres_bas ?? 0) - (a.pct_tres_bas ?? 0))
+      .slice(0, 20),
+    [departments]
+  )
+
+  // Escape key handler to close side panel
+  useEffect(() => {
+    if (!sidePanelData) return
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSidePanelData(null)
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [sidePanelData])
 
   // Branch on dataType for KPI
   const total = dataType === 'piezo' ? (stats?.total_piezo ?? 1) : (stats?.total_hydro ?? 1)
@@ -83,7 +103,7 @@ export default function TrendsPage() {
   if (statsError || deptsError) {
     return (
       <div className="h-full flex items-center justify-center">
-        <p className="text-red-400 text-sm" role="alert">Erreur lors du chargement des donnees.</p>
+        <p className="text-red-400 text-sm" role="alert">Erreur lors du chargement des données.</p>
       </div>
     )
   }
@@ -98,10 +118,10 @@ export default function TrendsPage() {
             <select
               value={selectedDept}
               onChange={(e) => setSelectedDept(e.target.value)}
-              aria-label="Filtrer par departement"
+              aria-label="Filtrer par département"
               className="px-3 py-1.5 bg-bg-card border border-white/10 rounded-lg text-xs text-text-primary focus:outline-none focus:border-accent-cyan/50"
             >
-              <option value="">Tous les departements</option>
+              <option value="">Tous les départements</option>
               {deptList.map(d => (
                 <option key={d} value={d}>{d}</option>
               ))}
@@ -111,7 +131,7 @@ export default function TrendsPage() {
             <div className="flex gap-1">
               <button
                 onClick={() => setDataType('piezo')}
-                aria-label="Afficher donnees piezometriques"
+                aria-label="Afficher données piézométriques"
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                   dataType === 'piezo' ? 'bg-accent-cyan/20 text-accent-cyan' : 'text-text-secondary hover:text-text-primary'
                 }`}
@@ -120,7 +140,7 @@ export default function TrendsPage() {
               </button>
               <button
                 onClick={() => setDataType('hydro')}
-                aria-label="Afficher donnees hydrometriques"
+                aria-label="Afficher données hydrométriques"
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                   dataType === 'hydro' ? 'bg-accent-indigo/20 text-accent-indigo' : 'text-text-secondary hover:text-text-primary'
                 }`}
@@ -145,11 +165,11 @@ export default function TrendsPage() {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             {[
-              { label: 'Tres bas', count: tresBas, color: CLASSIFICATION_COLORS.TRES_BAS },
+              { label: 'Très bas', count: tresBas, color: CLASSIFICATION_COLORS.TRES_BAS },
               { label: 'Bas', count: bas, color: CLASSIFICATION_COLORS.BAS },
               { label: 'Normal', count: normal, color: CLASSIFICATION_COLORS.NORMAL },
               { label: 'Haut', count: haut, color: CLASSIFICATION_COLORS.HAUT },
-              { label: 'Tres haut', count: tresHaut, color: CLASSIFICATION_COLORS.TRES_HAUT },
+              { label: 'Très haut', count: tresHaut, color: CLASSIFICATION_COLORS.TRES_HAUT },
             ].map((item) => (
               <div key={item.label} className="bg-bg-card border border-white/5 rounded-xl p-4 text-center">
                 <div className="w-3 h-3 rounded-full mx-auto mb-2" style={{ backgroundColor: item.color }} />
@@ -163,10 +183,10 @@ export default function TrendsPage() {
           </div>
         )}
 
-        {/* Stacked bar chart - Distribution par departement */}
+        {/* Stacked bar chart - Distribution par département */}
         <div className="bg-bg-card border border-white/5 rounded-xl p-5">
           <h3 className="text-sm font-semibold text-text-primary mb-4">
-            Distribution des classifications par departement
+            Distribution des classifications par département
             {selectedDept && <span className="text-accent-cyan ml-2">- {selectedDept}</span>}
           </h3>
           {isLoading ? (
@@ -186,7 +206,7 @@ export default function TrendsPage() {
             </div>
           ) : stackedData.length === 0 ? (
             <div className="flex items-center justify-center h-[300px] text-text-secondary text-sm">
-              Aucune donnee disponible
+              Aucune donnée disponible
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={Math.max(400, stackedData.length * 28)}>
@@ -205,19 +225,14 @@ export default function TrendsPage() {
                   width={95}
                 />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#111827',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: 8,
-                    fontSize: 12,
-                  }}
+                  contentStyle={CHART_TOOLTIP_STYLE}
                   formatter={(val: number, name: string) => [val, CLASSIFICATION_LABELS[name] ?? name]}
                 />
                 <Legend
                   wrapperStyle={{ fontSize: 11 }}
                   formatter={(value: string) => CLASSIFICATION_LABELS[value] ?? value}
                 />
-                {['TRES_BAS', 'BAS', 'NORMAL', 'HAUT', 'TRES_HAUT'].map((cls) => (
+                {(CLASSIFICATION_ORDER as readonly string[]).map((cls) => (
                   <Bar
                     key={cls}
                     dataKey={cls}
@@ -243,7 +258,7 @@ export default function TrendsPage() {
         {/* Original department ranking */}
         <div className="bg-bg-card border border-white/5 rounded-xl p-5">
           <h3 className="text-sm font-semibold text-text-primary mb-4">
-            Top 20 departements - % stations tres bas
+            Top 20 départements - % stations très bas
           </h3>
           {deptsLoading ? (
             <div className="h-[500px] animate-pulse space-y-3 py-4">
@@ -257,10 +272,7 @@ export default function TrendsPage() {
           ) : (
             <ResponsiveContainer width="100%" height={500}>
               <BarChart
-                data={(departments ?? [])
-                  .filter((d: any) => d.pct_tres_bas != null)
-                  .sort((a: any, b: any) => (b.pct_tres_bas ?? 0) - (a.pct_tres_bas ?? 0))
-                  .slice(0, 20)}
+                data={top20Depts}
                 layout="vertical"
                 margin={{ left: 80, right: 20, top: 5, bottom: 5 }}
               >
@@ -274,19 +286,11 @@ export default function TrendsPage() {
                   width={75}
                 />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#111827',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: 8,
-                    fontSize: 12,
-                  }}
-                  formatter={(val: number) => [`${val}%`, '% Tres bas']}
+                  contentStyle={CHART_TOOLTIP_STYLE}
+                  formatter={(val: number) => [`${val}%`, '% Très bas']}
                 />
                 <Bar dataKey="pct_tres_bas" radius={[0, 4, 4, 0]}>
-                  {((departments ?? [])
-                    .filter((d: any) => d.pct_tres_bas != null)
-                    .sort((a: any, b: any) => (b.pct_tres_bas ?? 0) - (a.pct_tres_bas ?? 0))
-                    .slice(0, 20)).map((d: any, i: number) => (
+                  {top20Depts.map((d: any, i: number) => (
                     <Cell key={i} fill={d.pct_tres_bas > 60 ? '#ef4444' : d.pct_tres_bas > 40 ? '#f97316' : '#06b6d4'} />
                   ))}
                 </Bar>
@@ -298,7 +302,13 @@ export default function TrendsPage() {
 
       {/* Side panel for clicked bar section */}
       {sidePanelData && (
-        <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setSidePanelData(null)}>
+        <div
+          className="fixed inset-0 z-50 flex justify-end"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="panel-title"
+          onClick={() => setSidePanelData(null)}
+        >
           <div className="absolute inset-0 bg-black/40" />
           <div
             className="relative w-full max-w-md bg-bg-card border-l border-white/10 h-full overflow-y-auto shadow-2xl"
@@ -306,7 +316,7 @@ export default function TrendsPage() {
           >
             <div className="p-5 border-b border-white/5 flex items-center justify-between sticky top-0 bg-bg-card z-10">
               <div>
-                <h3 className="text-sm font-semibold text-text-primary">{sidePanelData.dept}</h3>
+                <h3 id="panel-title" className="text-sm font-semibold text-text-primary">{sidePanelData.dept}</h3>
                 <p className="text-xs text-text-secondary mt-0.5">
                   {CLASSIFICATION_LABELS[sidePanelData.classification] ?? sidePanelData.classification}
                   {' '} - {sidePanelData.stations.length} station{sidePanelData.stations.length > 1 ? 's' : ''}
@@ -344,7 +354,7 @@ export default function TrendsPage() {
                 )
               })}
               {sidePanelData.stations.length === 0 && (
-                <p className="text-sm text-text-secondary text-center py-8">Aucune station dans cette categorie</p>
+                <p className="text-sm text-text-secondary text-center py-8">Aucune station dans cette catégorie</p>
               )}
             </div>
           </div>

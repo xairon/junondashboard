@@ -162,18 +162,21 @@ export default function StationPage() {
     ? (station.nom_commune || station.code_bss)
     : (station.libelle_station || station.code_station)
 
+  const hydroLabel = !isPiezo && station?.grandeur_hydro_principale === 'H' ? 'Hauteur moyenne' : 'Débit moyen'
+  const hydroUnit = !isPiezo && station?.grandeur_hydro_principale === 'H' ? 'm' : 'm³/s'
+
   const valueKey = resolution === 'daily'
     ? (isPiezo ? 'niveau_nappe_eau' : 'resultat_obs_elab')
     : (isPiezo ? 'niveau_moyen' : 'resultat_moyen')
-  const valueLabel = isPiezo ? 'Niveau nappe (m NGF)' : 'D\u00e9bit (m\u00b3/s)'
-  const unit = isPiezo ? 'm NGF' : 'm\u00b3/s'
+  const valueLabel = isPiezo ? 'Niveau nappe (m NGF)' : `${hydroLabel} (${hydroUnit})`
+  const unit = isPiezo ? 'm NGF' : hydroUnit
 
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">
-          <Link to="/" className="p-2 hover:bg-bg-hover rounded-lg transition-colors">
+          <Link to="/" className="p-2 hover:bg-bg-hover rounded-lg transition-colors" aria-label="Retour à l'observatoire">
             <ArrowLeft className="w-5 h-5 text-text-secondary" />
           </Link>
           <div>
@@ -194,10 +197,11 @@ export default function StationPage() {
         {/* Resolution selector */}
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-xs text-text-secondary font-medium">R\u00e9solution :</span>
-          <div className="flex gap-1">
+          <div role="group" aria-label="Résolution temporelle" className="flex gap-1">
             {RESOLUTION_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
+                aria-pressed={resolution === opt.value}
                 onClick={() => setResolution(opt.value)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                   resolution === opt.value
@@ -215,6 +219,7 @@ export default function StationPage() {
             <div className="flex items-center gap-2 ml-2">
               <input
                 type="date"
+                aria-label="Date de début"
                 value={dailyStart}
                 onChange={(e) => setDailyStart(e.target.value)}
                 className="bg-bg-card border border-white/10 rounded-lg px-2 py-1 text-xs text-text-primary focus:outline-none focus:border-accent-cyan/50"
@@ -222,6 +227,7 @@ export default function StationPage() {
               <span className="text-xs text-text-secondary">-</span>
               <input
                 type="date"
+                aria-label="Date de fin"
                 value={dailyEnd}
                 onChange={(e) => setDailyEnd(e.target.value)}
                 className="bg-bg-card border border-white/10 rounded-lg px-2 py-1 text-xs text-text-primary focus:outline-none focus:border-accent-cyan/50"

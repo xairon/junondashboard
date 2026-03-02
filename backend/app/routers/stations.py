@@ -30,21 +30,10 @@ async def list_piezo_stations(
     code_departement: Optional[str] = Query(None, min_length=1, max_length=3, description="Filter by department code"),
     bbox: Optional[str] = Query(None, description="Bounding box: min_lon,min_lat,max_lon,max_lat"),
     search: Optional[str] = Query(None, min_length=2, max_length=100, description="Search by code_bss or nom_commune"),
-    limit: int = Query(10000, ge=1, le=50000),
+    limit: int = Query(500, ge=1, le=5000),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
-    params = {
-        "min_observations": min_observations,
-        "last_measurement_after": str(last_measurement_after) if last_measurement_after else None,
-        "classification": classification,
-        "code_departement": code_departement,
-        "bbox": bbox,
-        "search": search,
-        "limit": limit,
-        "offset": offset,
-    }
-
     async def fetch():
         where_clauses = ["1=1"]
         bind_params = {}
@@ -66,12 +55,16 @@ async def list_piezo_stations(
             bind_params["dept"] = code_departement
 
         if bbox is not None:
-            parts = bbox.split(",")
-            if len(parts) == 4:
+            try:
+                parts = bbox.split(",")
+                if len(parts) != 4:
+                    raise ValueError("bbox must have exactly 4 values")
                 min_lon, min_lat, max_lon, max_lat = (float(p) for p in parts)
-                where_clauses.append("latitude BETWEEN :min_lat AND :max_lat")
-                where_clauses.append("longitude BETWEEN :min_lon AND :max_lon")
-                bind_params.update({"min_lat": min_lat, "max_lat": max_lat, "min_lon": min_lon, "max_lon": max_lon})
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=f"Invalid bbox: {exc}")
+            where_clauses.append("latitude BETWEEN :min_lat AND :max_lat")
+            where_clauses.append("longitude BETWEEN :min_lon AND :max_lon")
+            bind_params.update({"min_lat": min_lat, "max_lat": max_lat, "min_lon": min_lon, "max_lon": max_lon})
 
         if search is not None:
             where_clauses.append("(code_bss ILIKE :search OR nom_commune ILIKE :search)")
@@ -79,16 +72,8 @@ async def list_piezo_stations(
 
         where_sql = " AND ".join(where_clauses)
 
-        # Count query
-        count_query = f"SELECT count(*) FROM gold.dim_piezo_stations WHERE {where_sql}"
-        count_result = await db.execute(text(count_query), bind_params)
-        total = count_result.scalar()
-
-        # Data query
         query = f"""
-            SELECT code_bss, latitude, longitude, nom_commune, code_departement,
-                   nom_departement, classification_derniere_annee,
-                   niveau_moyen_global, premiere_mesure, derniere_mesure, nb_mesures_total
+            SELECT *, count(*) OVER() AS total_count
             FROM gold.dim_piezo_stations
             WHERE {where_sql}
             ORDER BY code_bss
@@ -99,9 +84,23 @@ async def list_piezo_stations(
 
         result = await db.execute(text(query), bind_params)
         rows = result.mappings().all()
-        return {"total": total, "rows": [dict(row) for row in rows]}
+        total = rows[0]["total_count"] if rows else 0
+        rows = [{k: v for k, v in row.items() if k != "total_count"} for row in rows]
+        return {"total": total, "rows": rows}
 
-    data = await fetch()
+    r = get_redis()
+    cache_params = {
+        "min_observations": min_observations,
+        "last_measurement_after": str(last_measurement_after) if last_measurement_after else None,
+        "classification": classification,
+        "code_departement": code_departement,
+        "bbox": bbox,
+        "search": search,
+        "limit": limit,
+        "offset": offset,
+    }
+    key = cache_key("piezo_list", cache_params)
+    data = await cached(r, key, PIEZO_LIST_TTL, fetch)
     response = FastJSONResponse(data["rows"])
     response.headers["X-Total-Count"] = str(data["total"])
     return response
@@ -116,22 +115,10 @@ async def list_hydro_stations(
     grandeur_hydro: Optional[str] = Query(None, description="Filter by grandeur_hydro_principale"),
     bbox: Optional[str] = Query(None, description="Bounding box: min_lon,min_lat,max_lon,max_lat"),
     search: Optional[str] = Query(None, min_length=2, max_length=100, description="Search by code_station, libelle_station or nom_cours_eau"),
-    limit: int = Query(10000, ge=1, le=50000),
+    limit: int = Query(500, ge=1, le=5000),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
-    params = {
-        "min_observations": min_observations,
-        "last_measurement_after": str(last_measurement_after) if last_measurement_after else None,
-        "classification": classification,
-        "code_departement": code_departement,
-        "grandeur_hydro": grandeur_hydro,
-        "bbox": bbox,
-        "search": search,
-        "limit": limit,
-        "offset": offset,
-    }
-
     async def fetch():
         where_clauses = ["1=1"]
         bind_params = {}
@@ -157,12 +144,16 @@ async def list_hydro_stations(
             bind_params["grandeur_hydro"] = grandeur_hydro
 
         if bbox is not None:
-            parts = bbox.split(",")
-            if len(parts) == 4:
+            try:
+                parts = bbox.split(",")
+                if len(parts) != 4:
+                    raise ValueError("bbox must have exactly 4 values")
                 min_lon, min_lat, max_lon, max_lat = (float(p) for p in parts)
-                where_clauses.append("latitude_station BETWEEN :min_lat AND :max_lat")
-                where_clauses.append("longitude_station BETWEEN :min_lon AND :max_lon")
-                bind_params.update({"min_lat": min_lat, "max_lat": max_lat, "min_lon": min_lon, "max_lon": max_lon})
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=f"Invalid bbox: {exc}")
+            where_clauses.append("latitude_station BETWEEN :min_lat AND :max_lat")
+            where_clauses.append("longitude_station BETWEEN :min_lon AND :max_lon")
+            bind_params.update({"min_lat": min_lat, "max_lat": max_lat, "min_lon": min_lon, "max_lon": max_lon})
 
         if search is not None:
             where_clauses.append("(code_station ILIKE :search OR libelle_station ILIKE :search OR nom_cours_eau ILIKE :search)")
@@ -170,17 +161,8 @@ async def list_hydro_stations(
 
         where_sql = " AND ".join(where_clauses)
 
-        # Count query
-        count_query = f"SELECT count(*) FROM gold.dim_hydro_stations WHERE {where_sql}"
-        count_result = await db.execute(text(count_query), bind_params)
-        total = count_result.scalar()
-
-        # Data query
         query = f"""
-            SELECT code_station, longitude_station AS longitude, latitude_station AS latitude,
-                   code_departement, nom_departement, libelle_station, nom_cours_eau,
-                   grandeur_hydro_principale, classification_resultat_dern_annee,
-                   resultat_moyen_global, premiere_mesure, derniere_mesure, nb_jours_total
+            SELECT *, count(*) OVER() AS total_count
             FROM gold.dim_hydro_stations
             WHERE {where_sql}
             ORDER BY code_station
@@ -191,9 +173,24 @@ async def list_hydro_stations(
 
         result = await db.execute(text(query), bind_params)
         rows = result.mappings().all()
-        return {"total": total, "rows": [dict(row) for row in rows]}
+        total = rows[0]["total_count"] if rows else 0
+        rows = [{k: v for k, v in row.items() if k != "total_count"} for row in rows]
+        return {"total": total, "rows": rows}
 
-    data = await fetch()
+    r = get_redis()
+    cache_params = {
+        "min_observations": min_observations,
+        "last_measurement_after": str(last_measurement_after) if last_measurement_after else None,
+        "classification": classification,
+        "code_departement": code_departement,
+        "grandeur_hydro": grandeur_hydro,
+        "bbox": bbox,
+        "search": search,
+        "limit": limit,
+        "offset": offset,
+    }
+    key = cache_key("hydro_list", cache_params)
+    data = await cached(r, key, HYDRO_LIST_TTL, fetch)
     response = FastJSONResponse(data["rows"])
     response.headers["X-Total-Count"] = str(data["total"])
     return response

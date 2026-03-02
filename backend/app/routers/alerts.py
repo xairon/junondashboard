@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.cache import cache_key, cached, get_redis
 from app.database import get_db
 from app.json_response import FastJSONResponse
 
@@ -89,7 +90,9 @@ async def list_alerts(
 
         return {"total": total, "rows": rows}
 
-    data = await fetch()
+    r = get_redis()
+    key = cache_key("alerts", params)
+    data = await cached(r, key, ALERTS_TTL, fetch)
     total = data["total"]
     rows = data["rows"]
 

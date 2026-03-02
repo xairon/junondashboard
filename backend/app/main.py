@@ -35,13 +35,16 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
     default_response_class=FastJSONResponse,
+    docs_url=None if not settings.debug else "/docs",
+    redoc_url=None if not settings.debug else "/redoc",
+    openapi_url=None if not settings.debug else "/openapi.json",
 )
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
     allow_methods=["GET"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "Accept"],
 )
 
 app.include_router(stations.router)
@@ -57,7 +60,7 @@ async def health(db: AsyncSession = Depends(get_db)):
     try:
         await db.execute(text("SELECT 1"))
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Database unavailable: {e}")
+        raise HTTPException(status_code=503, detail="Database unavailable")
     r = get_redis()
     redis_status = "disabled"
     if r is not None:

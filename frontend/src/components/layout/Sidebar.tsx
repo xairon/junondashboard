@@ -105,12 +105,12 @@ export function Sidebar({ onNavigate }: SidebarProps) {
   }, [searchOpen, searchResults, highlightIndex, selectResult])
 
   return (
-    <nav className="w-48 md:w-16 md:hover:w-48 transition-all duration-300 bg-bg-card border-r border-white/5 flex flex-col py-4 gap-1 group overflow-hidden shrink-0 h-full">
+    <nav className="w-48 md:w-16 md:hover:w-48 md:focus-within:w-48 transition-all duration-300 bg-bg-card border-r border-white/5 flex flex-col py-4 gap-1 group overflow-hidden shrink-0 h-full">
       <div className="mb-4 flex items-center gap-3 px-3 w-full">
         <div className="w-10 h-10 rounded-lg bg-accent-cyan/20 flex items-center justify-center shrink-0">
           <span className="text-accent-cyan font-bold text-lg">H</span>
         </div>
-        <span className="text-sm font-semibold text-text-primary md:opacity-0 md:group-hover:opacity-100 transition-opacity whitespace-nowrap">
+        <span className="text-sm font-semibold text-text-primary md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity whitespace-nowrap">
           Hydro Dashboard
         </span>
       </div>
@@ -128,7 +128,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
             onKeyDown={handleSearchKeyDown}
             placeholder="Rechercher..."
             aria-label="Rechercher une station"
-            className="bg-transparent text-xs text-text-primary placeholder:text-text-secondary focus:outline-none w-full md:w-0 md:group-hover:w-full transition-all"
+            className="bg-transparent text-xs text-text-primary placeholder:text-text-secondary focus:outline-none w-full md:w-0 md:group-hover:w-full md:group-focus-within:w-full transition-all"
           />
         </div>
 
@@ -174,7 +174,7 @@ export function Sidebar({ onNavigate }: SidebarProps) {
           }
         >
           <Icon className="w-5 h-5 shrink-0" />
-          <span className="text-sm md:opacity-0 md:group-hover:opacity-100 transition-opacity whitespace-nowrap">
+          <span className="text-sm md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity whitespace-nowrap">
             {label}
           </span>
         </NavLink>

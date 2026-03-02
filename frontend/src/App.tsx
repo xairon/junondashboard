@@ -24,7 +24,7 @@ class ErrorBoundary extends Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ padding: 32, textAlign: 'center', color: '#f87171' }}>
+        <div role="alert" style={{ padding: 32, textAlign: 'center', color: '#f87171' }}>
           <h1 style={{ fontSize: 24, marginBottom: 8 }}>Une erreur est survenue</h1>
           <p style={{ color: '#9ca3af', marginBottom: 16 }}>
             {this.state.error?.message ?? 'Erreur inconnue'}
@@ -40,7 +40,7 @@ class ErrorBoundary extends Component<
               cursor: 'pointer',
             }}
           >
-            Reessayer
+            R\u00e9essayer
           </button>
         </div>
       )

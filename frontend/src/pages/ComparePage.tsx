@@ -1,9 +1,10 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { X, Search, Loader2 } from 'lucide-react'
 import { useQueries } from '@tanstack/react-query'
 import { usePiezoStations, useHydroStations } from '../hooks/useStations'
 import { api } from '../lib/api'
+import { CHART_TOOLTIP_STYLE } from '../lib/types'
 import {
   ComposedChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Legend,
@@ -21,9 +22,21 @@ export default function ComparePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [searchQuery, setSearchQuery] = useState('')
   const [normalized, setNormalized] = useState(false)
+  const searchRef = useRef<HTMLDivElement>(null)
 
   const { data: piezoStations } = usePiezoStations()
   const { data: hydroStations } = useHydroStations()
+
+  // Click-outside handler for search dropdown
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setSearchQuery('')
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   // Derive selected stations from URL params
   const selected = useMemo<SelectedStation[]>(() => {
@@ -46,6 +59,15 @@ export default function ComparePage() {
       return { code, name, type }
     })
   }, [searchParams, piezoStations, hydroStations])
+
+  // Auto-enable normalization for mixed types
+  useEffect(() => {
+    const hasPiezo = selected.some(s => s.type === 'piezo')
+    const hasHydro = selected.some(s => s.type === 'hydro')
+    if (hasPiezo && hasHydro && !normalized) {
+      setNormalized(true)
+    }
+  }, [selected]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Update URL when selection changes
   const updateUrl = useCallback((newSelected: SelectedStation[]) => {
@@ -96,10 +118,17 @@ export default function ComparePage() {
     })),
   })
 
-  // Merge data for chart - show chart from whichever queries have data
+  // Merge data for chart - optimized with Map lookup
   const chartData = useMemo(() => {
     const ready = queries.filter(q => !!q.data)
     if (!ready.length) return []
+
+    // Build O(1) lookup maps
+    const dataMaps = queries.map(q => {
+      const map = new Map<string, any>()
+      q.data?.forEach((d: any) => map.set(d.mois, d))
+      return map
+    })
 
     const allDates = new Set<string>()
     ready.forEach((q) => {
@@ -122,7 +151,8 @@ export default function ComparePage() {
     return sorted.map((date) => {
       const row: any = { mois: date }
       queries.forEach((q, i) => {
-        const point = q.data?.find((d: any) => d.mois === date)
+        if (!q.data) return
+        const point = dataMaps[i].get(date)
         const key = selected[i].type === 'piezo' ? 'niveau_moyen' : 'resultat_moyen'
         let value = point?.[key] ?? null
         if (value != null && normalized) {
@@ -163,7 +193,7 @@ export default function ComparePage() {
           ))}
 
           {selected.length < 5 && (
-            <div className="relative">
+            <div className="relative" ref={searchRef}>
               <div className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-card border border-white/10 rounded-full">
                 <Search className="w-3.5 h-3.5 text-text-secondary" />
                 <input
@@ -172,7 +202,7 @@ export default function ComparePage() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Ajouter..."
                   className="bg-transparent text-sm text-text-primary placeholder:text-text-secondary focus:outline-none w-32"
-                  aria-label="Rechercher une station a comparer"
+                  aria-label="Rechercher une station à comparer"
                 />
               </div>
               {searchResults.length > 0 && (
@@ -208,10 +238,10 @@ export default function ComparePage() {
             </button>
             <button
               onClick={() => setNormalized(true)}
-              aria-label="Afficher valeurs normalisees"
+              aria-label="Afficher valeurs normalisées"
               className={`px-3 py-1.5 rounded-lg text-xs font-medium ${normalized ? 'bg-accent-cyan/20 text-accent-cyan' : 'text-text-secondary'}`}
             >
-              Normalise (z-score)
+              Normalisé (z-score)
             </button>
           </div>
         )}
@@ -234,7 +264,7 @@ export default function ComparePage() {
         {chartData.length > 0 && (
           <div className="bg-bg-card border border-white/5 rounded-xl p-5">
             <h3 className="text-sm font-semibold text-text-primary mb-3">
-              {normalized ? 'Valeurs normalisees (z-score)' : 'Series superposees'}
+              {normalized ? 'Valeurs normalisées (z-score)' : 'Séries superposées'}
             </h3>
             <ResponsiveContainer width="100%" height={400}>
               <ComposedChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
@@ -250,12 +280,7 @@ export default function ComparePage() {
                 />
                 <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} stroke="transparent" />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#111827',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: 8,
-                    fontSize: 12,
-                  }}
+                  contentStyle={CHART_TOOLTIP_STYLE}
                 />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 {selected.map((s, i) => (
@@ -277,7 +302,7 @@ export default function ComparePage() {
 
         {selected.length === 0 && (
           <div className="flex items-center justify-center h-64 text-text-secondary text-sm">
-            Selectionnez des stations pour les comparer
+            Sélectionnez des stations pour les comparer
           </div>
         )}
       </div>

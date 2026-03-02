@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react'
+import { useRef, useEffect, useCallback, useMemo } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { CLASSIFICATION_COLORS, CLASSIFICATION_LABELS } from '../../lib/constants'
@@ -51,7 +51,7 @@ function MapLegend({
       <div className="space-y-1">
         {legendItems.map((item) => (
           <div key={item.key} className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
+            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} aria-hidden="true" />
             <span className="text-[11px] text-white/80">{item.label}</span>
           </div>
         ))}
@@ -221,7 +221,7 @@ function era5ToGeoJSON(data: any[], variable: string) {
         properties: {
           weight: variable === 'total_precipitation'
             ? Math.max(0, (d[variable] ?? 0) * 1000)
-            : Math.max(0, (d[variable] ?? 0) - 260),
+            : Math.max(0, (d[variable] ?? 0) - 273.15),
         },
       })),
   }
@@ -250,6 +250,22 @@ export function ObservatoryMap({
 
   piezoDataRef.current = piezoStations
   hydroDataRef.current = hydroStations
+
+  // HashMap refs for O(1) click lookup
+  const piezoMapRef = useRef<Map<string, any>>(new Map())
+  const hydroMapRef = useRef<Map<string, any>>(new Map())
+
+  useEffect(() => {
+    if (piezoStations) {
+      piezoMapRef.current = new Map(piezoStations.map((s: any) => [s.code_bss, s]))
+    }
+  }, [piezoStations])
+
+  useEffect(() => {
+    if (hydroStations) {
+      hydroMapRef.current = new Map(hydroStations.map((s: any) => [s.code_station, s]))
+    }
+  }, [hydroStations])
 
   const updateSource = useCallback((map: maplibregl.Map, sourceId: string, stations: any[] | undefined, classificationKey: string, codeKey: string) => {
     const source = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined
@@ -339,15 +355,15 @@ export function ObservatoryMap({
 
       // --- Click: individual station ---
       map.on('click', 'piezo-unclustered', (e) => {
-        if (!e.features?.length || !piezoDataRef.current) return
+        if (!e.features?.length) return
         const code = e.features[0].properties?.code
-        const station = piezoDataRef.current.find(s => s.code_bss === code)
+        const station = piezoMapRef.current.get(code)
         if (station && onStationClickRef.current) onStationClickRef.current(station, 'piezo')
       })
       map.on('click', 'hydro-unclustered', (e) => {
-        if (!e.features?.length || !hydroDataRef.current) return
+        if (!e.features?.length) return
         const code = e.features[0].properties?.code
-        const station = hydroDataRef.current.find(s => s.code_station === code)
+        const station = hydroMapRef.current.get(code)
         if (station && onStationClickRef.current) onStationClickRef.current(station, 'hydro')
       })
 
@@ -413,12 +429,18 @@ export function ObservatoryMap({
     }
   }, [showERA5, era5Data, era5Variable])
 
-  const piezoCount = piezoStations?.filter((s: any) => s.longitude != null && s.latitude != null).length ?? 0
-  const hydroCount = hydroStations?.filter((s: any) => s.longitude != null && s.latitude != null).length ?? 0
+  const piezoCount = useMemo(
+    () => piezoStations?.filter((s: any) => s.longitude != null && s.latitude != null).length ?? 0,
+    [piezoStations]
+  )
+  const hydroCount = useMemo(
+    () => hydroStations?.filter((s: any) => s.longitude != null && s.latitude != null).length ?? 0,
+    [hydroStations]
+  )
 
   return (
     <div className="relative w-full h-full">
-      <div ref={containerRef} className="w-full h-full" />
+      <div ref={containerRef} className="w-full h-full" role="application" aria-label="Carte interactive des stations hydrologiques de France" />
       <MapLegend
         piezoCount={piezoCount}
         hydroCount={hydroCount}

@@ -27,8 +27,8 @@ function formatRelativeTime(dateStr: string): string {
 
 export default function ObservatoryPage() {
   const { filters, setFilter, apiParams } = useFilters()
-  const { data: piezoStations } = usePiezoStations(apiParams)
-  const { data: hydroStations } = useHydroStations(apiParams)
+  const { data: piezoStations, isLoading: piezoLoading, isError: piezoError } = usePiezoStations(apiParams)
+  const { data: hydroStations, isLoading: hydroLoading, isError: hydroError } = useHydroStations(apiParams)
   const { data: nationalStats } = useQuery({
     queryKey: ['stats', 'national'],
     queryFn: api.stats.national,
@@ -96,6 +96,12 @@ export default function ObservatoryPage() {
 
   return (
     <div className="relative h-full">
+      {(piezoError || hydroError) && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-red-900/90 text-red-200 px-4 py-2 rounded-lg text-sm">
+          Erreur lors du chargement des stations. <button onClick={() => window.location.reload()} className="underline ml-2">Réessayer</button>
+        </div>
+      )}
+
       <ObservatoryMap
         piezoStations={piezoStations}
         hydroStations={hydroStations}
@@ -124,7 +130,7 @@ export default function ObservatoryPage() {
       <div className="absolute top-16 md:top-4 left-4 md:left-[22rem] z-10 flex gap-1">
         <button
           onClick={() => setShowPiezo(!showPiezo)}
-          aria-label="Afficher couche piezometrique"
+          aria-label="Afficher couche piézométrique"
           aria-pressed={showPiezo}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
             showPiezo
@@ -136,7 +142,7 @@ export default function ObservatoryPage() {
         </button>
         <button
           onClick={() => setShowHydro(!showHydro)}
-          aria-label="Afficher couche hydrometrique"
+          aria-label="Afficher couche hydrométrique"
           aria-pressed={showHydro}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
             showHydro

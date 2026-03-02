@@ -27,16 +27,16 @@ export function StationPopup({ station, type, onClose }: Props) {
   const dept = station.nom_departement ?? station.code_departement ?? ''
 
   return (
-    <div className="absolute bottom-20 left-4 z-10 bg-bg-card border border-white/10 rounded-xl shadow-2xl p-4 w-80 backdrop-blur-sm">
+    <div role="dialog" aria-label={`Station ${station.code_bss || station.code_station}`} className="absolute bottom-20 left-4 z-10 bg-bg-card border border-white/10 rounded-xl shadow-2xl p-4 w-[calc(100%-2rem)] sm:w-80 backdrop-blur-sm">
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1 min-w-0">
           <p className="text-xs text-accent-cyan font-medium uppercase tracking-wide mb-1">
-            {type === 'piezo' ? 'Piezometrie' : 'Hydrometrie'}
+            {type === 'piezo' ? 'Pi\u00e9zom\u00e9trie' : 'Hydrom\u00e9trie'}
           </p>
           <h3 className="text-sm font-semibold text-text-primary truncate">{name}</h3>
           <p className="text-xs text-text-secondary">{dept} &middot; {code}</p>
         </div>
-        <button onClick={onClose} className="p-1 hover:bg-bg-hover rounded">
+        <button onClick={onClose} aria-label="Fermer" className="p-1 hover:bg-bg-hover rounded">
           <X className="w-4 h-4 text-text-secondary" />
         </button>
       </div>
@@ -60,7 +60,7 @@ export function StationPopup({ station, type, onClose }: Props) {
         to={`/station/${type}/${code}`}
         className="flex items-center gap-1.5 text-xs text-accent-cyan hover:text-accent-cyan/80 transition-colors"
       >
-        Voir les details <ExternalLink className="w-3 h-3" />
+        Voir les d\u00e9tails <ExternalLink className="w-3 h-3" />
       </Link>
     </div>
   )

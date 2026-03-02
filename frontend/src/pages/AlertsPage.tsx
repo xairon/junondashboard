@@ -1,10 +1,12 @@
 import { useState, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { Download, AlertTriangle, MapPin, ChevronUp, ChevronDown } from 'lucide-react'
-import { usePiezoStations, useHydroStations } from '../hooks/useStations'
+import { Download, AlertTriangle, MapPin } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { api } from '../lib/api'
 import { ClassificationBadge } from '../components/station/ClassificationBadge'
 import { CLASSIFICATION_COLORS } from '../lib/constants'
 import { formatDate } from '../lib/utils'
+import type { Alert } from '../lib/types'
 
 const PAGE_SIZE = 50
 
@@ -20,17 +22,15 @@ type SortDir = 'asc' | 'desc'
 const SEVERITY_OPTIONS = ['TRES_BAS', 'BAS', 'HAUT', 'TRES_HAUT'] as const
 
 export default function AlertsPage() {
-  const [dataType, setDataType] = useState<'piezo' | 'hydro' | 'all'>('all')
   const [page, setPage] = useState(0)
   const [severityFilter, setSeverityFilter] = useState<string[]>([])
   const [sortKey, setSortKey] = useState<SortKey | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>('asc')
 
-  const { data: piezoStations, isLoading: piezoLoading, isError: piezoError } = usePiezoStations()
-  const { data: hydroStations, isLoading: hydroLoading, isError: hydroError } = useHydroStations()
-
-  const isLoading = piezoLoading || hydroLoading
-  const isError = piezoError || hydroError
+  const { data: alerts, isLoading, isError } = useQuery({
+    queryKey: ['alerts', severityFilter],
+    queryFn: () => api.alerts.list(severityFilter.length > 0 ? { severity: severityFilter } : undefined),
+  })
 
   const toggleSeverity = useCallback((sev: string) => {
     setSeverityFilter(prev =>
@@ -49,58 +49,20 @@ export default function AlertsPage() {
   }, [sortKey])
 
   const alertStations = useMemo(() => {
-    let stations: any[] = []
-
-    if (dataType !== 'hydro') {
-      const piezo = (piezoStations ?? [])
-        .filter((s: any) => {
-          const cls = s.classification_derniere_annee
-          return cls === 'TRES_BAS' || cls === 'BAS' || cls === 'HAUT' || cls === 'TRES_HAUT'
-        })
-        .map((s: any) => ({
-          code: s.code_bss,
-          name: s.nom_commune || s.code_bss,
-          dept: s.nom_departement ?? s.code_departement,
-          classification: s.classification_derniere_annee,
-          tendance: s.tendance_classification,
-          derniere_mesure: s.derniere_mesure,
-          cours_eau: null,
-          type: 'piezo',
-          lat: s.latitude,
-          lon: s.longitude,
-        }))
-      stations = [...stations, ...piezo]
-    }
-
-    if (dataType !== 'piezo') {
-      const hydro = (hydroStations ?? [])
-        .filter((s: any) => {
-          const cls = s.classification_resultat_dern_annee
-          return cls === 'TRES_BAS' || cls === 'BAS' || cls === 'HAUT' || cls === 'TRES_HAUT'
-        })
-        .map((s: any) => ({
-          code: s.code_station,
-          name: s.libelle_station || s.code_station,
-          dept: s.nom_departement ?? s.code_departement,
-          classification: s.classification_resultat_dern_annee,
-          tendance: null,
-          derniere_mesure: s.derniere_mesure,
-          cours_eau: s.libelle_cours_eau || s.nom_cours_eau || null,
-          type: 'hydro',
-          lat: s.latitude,
-          lon: s.longitude,
-        }))
-      stations = [...stations, ...hydro]
-    }
-
-    // Apply severity filter
-    if (severityFilter.length > 0) {
-      stations = stations.filter(s => severityFilter.includes(s.classification))
-    }
+    let stations = (alerts ?? []).map((a: Alert) => ({
+      code: a.code,
+      name: a.commune || a.code,
+      dept: a.departement ?? a.code_departement,
+      classification: a.classification,
+      derniere_mesure: a.derniere_mesure,
+      type: a.type,
+      lat: a.latitude,
+      lon: a.longitude,
+    }))
 
     // Sort
     if (sortKey) {
-      stations.sort((a, b) => {
+      stations.sort((a: any, b: any) => {
         let valA: any, valB: any
         switch (sortKey) {
           case 'name': valA = (a.name ?? '').toLowerCase(); valB = (b.name ?? '').toLowerCase(); break
@@ -119,11 +81,11 @@ export default function AlertsPage() {
     } else {
       // Default sort by severity
       const classOrder: Record<string, number> = { TRES_BAS: 0, BAS: 1, HAUT: 2, TRES_HAUT: 3 }
-      stations.sort((a, b) => (classOrder[a.classification] ?? 9) - (classOrder[b.classification] ?? 9))
+      stations.sort((a: any, b: any) => (classOrder[a.classification] ?? 9) - (classOrder[b.classification] ?? 9))
     }
 
     return stations
-  }, [piezoStations, hydroStations, dataType, severityFilter, sortKey, sortDir])
+  }, [alerts, sortKey, sortDir])
 
   const paged = alertStations.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
   const totalPages = Math.ceil(alertStations.length / PAGE_SIZE)
@@ -135,11 +97,9 @@ export default function AlertsPage() {
     const header = [
       escapeCSV('Code'),
       escapeCSV('Nom'),
-      escapeCSV('Departement'),
+      escapeCSV('Département'),
       escapeCSV('Classification'),
-      escapeCSV('Tendance'),
-      escapeCSV('Cours d\'eau'),
-      escapeCSV('Derniere mesure'),
+      escapeCSV('Dernière mesure'),
       escapeCSV('Type'),
     ].join(',') + '\n'
     const rows = alertStations.map(s =>
@@ -148,8 +108,6 @@ export default function AlertsPage() {
         escapeCSV(s.name),
         escapeCSV(s.dept),
         escapeCSV(s.classification),
-        escapeCSV(s.tendance),
-        escapeCSV(s.cours_eau),
         escapeCSV(s.derniere_mesure),
         escapeCSV(s.type),
       ].join(',')
@@ -173,7 +131,7 @@ export default function AlertsPage() {
   if (isError) {
     return (
       <div className="h-full flex items-center justify-center">
-        <p className="text-red-400 text-sm" role="alert">Erreur lors du chargement des donnees.</p>
+        <p className="text-red-400 text-sm" role="alert">Erreur lors du chargement des données.</p>
       </div>
     )
   }
@@ -191,18 +149,6 @@ export default function AlertsPage() {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            {(['all', 'piezo', 'hydro'] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => { setDataType(t); setPage(0) }}
-                aria-label={`Filtrer par type ${t === 'all' ? 'tous' : t}`}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                  dataType === t ? 'bg-accent-cyan/20 text-accent-cyan' : 'text-text-secondary hover:text-text-primary'
-                }`}
-              >
-                {t === 'all' ? 'Tous' : t.charAt(0).toUpperCase() + t.slice(1)}
-              </button>
-            ))}
             <button onClick={exportCSV} aria-label="Exporter en CSV" className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-card border border-white/10 rounded-lg text-xs text-text-secondary hover:text-text-primary transition-colors">
               <Download className="w-3.5 h-3.5" /> CSV
             </button>
@@ -211,16 +157,16 @@ export default function AlertsPage() {
 
         {/* Severity filter buttons */}
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs text-text-secondary">Severite :</span>
+          <span className="text-xs text-text-secondary">Sévérité :</span>
           {SEVERITY_OPTIONS.map(sev => {
             const active = severityFilter.includes(sev)
             const color = CLASSIFICATION_COLORS[sev]
-            const labels: Record<string, string> = { TRES_BAS: 'Tres bas', BAS: 'Bas', HAUT: 'Haut', TRES_HAUT: 'Tres haut' }
+            const labels: Record<string, string> = { TRES_BAS: 'Très bas', BAS: 'Bas', HAUT: 'Haut', TRES_HAUT: 'Très haut' }
             return (
               <button
                 key={sev}
                 onClick={() => toggleSeverity(sev)}
-                aria-label={`Filtrer severite ${labels[sev]}`}
+                aria-label={`Filtrer sévérité ${labels[sev]}`}
                 aria-pressed={active}
                 className="px-2.5 py-1 rounded-full text-xs font-medium transition-colors border"
                 style={{
@@ -251,7 +197,7 @@ export default function AlertsPage() {
             </div>
             <div>
               <p className="text-2xl font-bold text-text-primary font-mono">{tresBas.toLocaleString('fr-FR')}</p>
-              <p className="text-xs text-text-secondary">Stations tres bas</p>
+              <p className="text-xs text-text-secondary">Stations très bas</p>
             </div>
           </div>
           <div className="bg-bg-card border border-white/5 rounded-xl p-4 flex items-center gap-4">
@@ -299,28 +245,30 @@ export default function AlertsPage() {
                       <th
                         className="px-4 py-3 text-left text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary"
                         onClick={() => handleSort('name')}
+                        aria-sort={sortKey === 'name' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
                       >
                         Nom <SortIndicator column="name" />
                       </th>
                       <th
                         className="px-4 py-3 text-left text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary"
                         onClick={() => handleSort('dept')}
+                        aria-sort={sortKey === 'dept' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
                       >
-                        Departement <SortIndicator column="dept" />
+                        Département <SortIndicator column="dept" />
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">Cours d'eau</th>
                       <th
                         className="px-4 py-3 text-left text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary"
                         onClick={() => handleSort('classification')}
+                        aria-sort={sortKey === 'classification' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
                       >
                         Classification <SortIndicator column="classification" />
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">Tendance</th>
                       <th
                         className="px-4 py-3 text-left text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary"
                         onClick={() => handleSort('derniere_mesure')}
+                        aria-sort={sortKey === 'derniere_mesure' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
                       >
-                        Derniere mesure <SortIndicator column="derniere_mesure" />
+                        Dernière mesure <SortIndicator column="derniere_mesure" />
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">Carte</th>
                     </tr>
@@ -340,9 +288,7 @@ export default function AlertsPage() {
                         </td>
                         <td className="px-4 py-2.5 text-text-primary">{s.name}</td>
                         <td className="px-4 py-2.5 text-text-secondary">{s.dept}</td>
-                        <td className="px-4 py-2.5 text-text-secondary text-xs">{s.cours_eau ?? '-'}</td>
                         <td className="px-4 py-2.5"><ClassificationBadge classification={s.classification} /></td>
-                        <td className="px-4 py-2.5 text-text-secondary text-xs">{s.tendance ?? '-'}</td>
                         <td className="px-4 py-2.5 text-text-secondary text-xs">{formatDate(s.derniere_mesure)}</td>
                         <td className="px-4 py-2.5">
                           <Link
@@ -371,7 +317,7 @@ export default function AlertsPage() {
                       disabled={page === 0}
                       className="px-2.5 py-1 rounded text-xs text-text-secondary hover:text-text-primary disabled:opacity-30"
                     >
-                      Prec.
+                      Préc.
                     </button>
                     <span className="px-2.5 py-1 text-xs text-text-secondary">
                       {page + 1} / {totalPages}

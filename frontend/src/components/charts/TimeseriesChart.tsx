@@ -3,6 +3,7 @@ import {
   ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Brush, Area,
 } from 'recharts'
+import { CHART_TOOLTIP_STYLE } from '../../lib/types'
 
 interface Props {
   data: any[]
@@ -34,7 +35,7 @@ export function TimeseriesChart({ data, valueKey, valueLabel, unit, precipKey = 
   }, [data, period])
 
   if (!filteredData.length) {
-    return <div className="flex items-center justify-center h-64 text-text-secondary text-sm">Aucune donnee</div>
+    return <div className="flex items-center justify-center h-64 text-text-secondary text-sm">Aucune donn\u00e9e</div>
   }
 
   return (
@@ -46,6 +47,7 @@ export function TimeseriesChart({ data, valueKey, valueLabel, unit, precipKey = 
             <button
               key={label}
               onClick={() => setPeriod(months)}
+              aria-pressed={period === months}
               className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
                 period === months
                   ? 'bg-accent-cyan/20 text-accent-cyan'
@@ -57,68 +59,65 @@ export function TimeseriesChart({ data, valueKey, valueLabel, unit, precipKey = 
           ))}
         </div>
       </div>
-      <ResponsiveContainer width="100%" height={320}>
-        <ComposedChart data={filteredData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-          <XAxis
-            dataKey={(d: any) => d.mois || d.date}
-            tick={{ fill: '#9ca3af', fontSize: 11 }}
-            tickFormatter={(v: string) => {
-              const d = new Date(v)
-              return `${d.getMonth() + 1}/${String(d.getFullYear()).slice(2)}`
-            }}
-            stroke="transparent"
-          />
-          <YAxis
-            yAxisId="left"
-            tick={{ fill: '#9ca3af', fontSize: 11 }}
-            stroke="transparent"
-            label={{ value: unit, angle: -90, position: 'insideLeft', fill: '#9ca3af', fontSize: 11 }}
-          />
-          <YAxis
-            yAxisId="right"
-            orientation="right"
-            reversed
-            tick={{ fill: '#9ca3af', fontSize: 11 }}
-            stroke="transparent"
-            label={{ value: 'mm', angle: 90, position: 'insideRight', fill: '#9ca3af', fontSize: 11 }}
-          />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: '#111827',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 8,
-              fontSize: 12,
-            }}
-            labelFormatter={(v: string) => new Date(v).toLocaleDateString('fr-FR')}
-          />
-          <Area
-            yAxisId="right"
-            dataKey={precipKey}
-            fill="rgba(56,189,248,0.15)"
-            stroke="rgba(56,189,248,0.4)"
-            strokeWidth={1}
-            name="Precipitations (mm)"
-          />
-          <Line
-            yAxisId="left"
-            type="monotone"
-            dataKey={valueKey}
-            stroke="#06b6d4"
-            strokeWidth={1.5}
-            dot={false}
-            name={valueLabel}
-            connectNulls={false}
-          />
-          <Brush
-            dataKey={(d: any) => d.mois || d.date}
-            height={24}
-            stroke="rgba(6,182,212,0.3)"
-            fill="#0a0e1a"
-            tickFormatter={() => ''}
-          />
-        </ComposedChart>
-      </ResponsiveContainer>
+      <div role="img" aria-label={`Graphique chronologique montrant l'\u00e9volution des mesures`}>
+        <ResponsiveContainer width="100%" height={320}>
+          <ComposedChart data={filteredData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+            <XAxis
+              dataKey={(d: any) => d.mois || d.date}
+              tick={{ fill: '#9ca3af', fontSize: 11 }}
+              tickFormatter={(v: string) => {
+                const d = new Date(v)
+                return `${d.getMonth() + 1}/${String(d.getFullYear()).slice(2)}`
+              }}
+              stroke="transparent"
+            />
+            <YAxis
+              yAxisId="left"
+              tick={{ fill: '#9ca3af', fontSize: 11 }}
+              stroke="transparent"
+              label={{ value: unit, angle: -90, position: 'insideLeft', fill: '#9ca3af', fontSize: 11 }}
+            />
+            <YAxis
+              yAxisId="right"
+              orientation="right"
+              reversed
+              tick={{ fill: '#9ca3af', fontSize: 11 }}
+              stroke="transparent"
+              label={{ value: 'mm', angle: 90, position: 'insideRight', fill: '#9ca3af', fontSize: 11 }}
+            />
+            <Tooltip
+              contentStyle={CHART_TOOLTIP_STYLE}
+              labelFormatter={(v: string) => new Date(v).toLocaleDateString('fr-FR')}
+            />
+            <Area
+              yAxisId="right"
+              dataKey={precipKey}
+              fill="rgba(56,189,248,0.15)"
+              stroke="rgba(56,189,248,0.4)"
+              strokeWidth={1}
+              name="Pr\u00e9cipitations (mm)"
+            />
+            <Line
+              yAxisId="left"
+              type="monotone"
+              dataKey={valueKey}
+              stroke="#06b6d4"
+              strokeWidth={1.5}
+              dot={false}
+              name={valueLabel}
+              connectNulls={false}
+            />
+            <Brush
+              dataKey={(d: any) => d.mois || d.date}
+              height={24}
+              stroke="rgba(6,182,212,0.3)"
+              fill="#0a0e1a"
+              tickFormatter={() => ''}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   )
 }

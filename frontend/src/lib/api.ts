@@ -1,4 +1,11 @@
 import { API_BASE } from './constants'
+import type {
+  PiezoStation, HydroStation, NationalStats, DepartmentStats,
+  Alert, ERA5GridPoint,
+  DailyPiezoMeasurement, DailyHydroMeasurement,
+  MonthlyPiezoData, MonthlyHydroData,
+  YearlyPiezoData, YearlyHydroData
+} from './types'
 
 async function fetchJson<T>(path: string, params?: Record<string, string | string[] | undefined>): Promise<T> {
   const url = new URL(`${API_BASE}${path}`, window.location.origin)
@@ -27,34 +34,38 @@ async function fetchJson<T>(path: string, params?: Record<string, string | strin
 export const api = {
   stations: {
     piezo: (params?: Record<string, string | string[] | undefined>) =>
-      fetchJson<any[]>('/stations/piezo', params),
+      fetchJson<PiezoStation[]>('/stations/piezo', params),
     hydro: (params?: Record<string, string | string[] | undefined>) =>
-      fetchJson<any[]>('/stations/hydro', params),
-    piezoDetail: (code: string) => fetchJson<any>(`/stations/piezo/${code}`),
-    hydroDetail: (code: string) => fetchJson<any>(`/stations/hydro/${code}`),
+      fetchJson<HydroStation[]>('/stations/hydro', params),
+    piezoDetail: (code: string) => fetchJson<PiezoStation>(`/stations/piezo/${code}`),
+    hydroDetail: (code: string) => fetchJson<HydroStation>(`/stations/hydro/${code}`),
   },
   timeseries: {
     piezoDaily: (code: string, params?: Record<string, string | undefined>) =>
-      fetchJson<any[]>(`/timeseries/piezo/${code}/daily`, params),
+      fetchJson<DailyPiezoMeasurement[]>(`/timeseries/piezo/${code}/daily`, params),
     hydroDaily: (code: string, params?: Record<string, string | undefined>) =>
-      fetchJson<any[]>(`/timeseries/hydro/${code}/daily`, params),
-    piezoMonthly: (code: string) => fetchJson<any[]>(`/timeseries/piezo/${code}/monthly`),
-    hydroMonthly: (code: string) => fetchJson<any[]>(`/timeseries/hydro/${code}/monthly`),
-    piezoYearly: (code: string) => fetchJson<any[]>(`/timeseries/piezo/${code}/yearly`),
-    hydroYearly: (code: string) => fetchJson<any[]>(`/timeseries/hydro/${code}/yearly`),
+      fetchJson<DailyHydroMeasurement[]>(`/timeseries/hydro/${code}/daily`, params),
+    piezoMonthly: (code: string) => fetchJson<MonthlyPiezoData[]>(`/timeseries/piezo/${code}/monthly`),
+    hydroMonthly: (code: string) => fetchJson<MonthlyHydroData[]>(`/timeseries/hydro/${code}/monthly`),
+    piezoYearly: (code: string) => fetchJson<YearlyPiezoData[]>(`/timeseries/piezo/${code}/yearly`),
+    hydroYearly: (code: string) => fetchJson<YearlyHydroData[]>(`/timeseries/hydro/${code}/yearly`),
   },
   trends: {
-    piezo: (params?: Record<string, string | undefined>) => fetchJson<any[]>('/trends/piezo', params),
-    hydro: (params?: Record<string, string | undefined>) => fetchJson<any[]>('/trends/hydro', params),
+    piezo: (params?: Record<string, string | undefined>) => fetchJson<PiezoStation[]>('/trends/piezo', params),
+    hydro: (params?: Record<string, string | undefined>) => fetchJson<HydroStation[]>('/trends/hydro', params),
   },
   stats: {
-    national: () => fetchJson<any>('/stats/national'),
-    departments: () => fetchJson<any[]>('/stats/departments'),
+    national: () => fetchJson<NationalStats>('/stats/national'),
+    departments: () => fetchJson<DepartmentStats[]>('/stats/departments'),
+  },
+  alerts: {
+    list: (params?: Record<string, string | string[] | undefined>) =>
+      fetchJson<Alert[]>('/alerts', params),
   },
   era5: {
-    grid: () => fetchJson<any[]>('/era5/grid'),
-    snapshot: (date: string) => fetchJson<any[]>('/era5/snapshot', { date }),
+    grid: () => fetchJson<ERA5GridPoint[]>('/era5/grid'),
+    snapshot: (date: string) => fetchJson<ERA5GridPoint[]>('/era5/snapshot', { date }),
     dates: () => fetchJson<string[]>('/era5/dates'),
-    monthly: (month: string) => fetchJson<any[]>('/era5/monthly', { month }),
+    monthly: (month: string) => fetchJson<ERA5GridPoint[]>('/era5/monthly', { month }),
   },
 }

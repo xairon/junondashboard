@@ -73,16 +73,22 @@ async def get_era5_monthly(
     db: AsyncSession = Depends(get_db),
 ):
     async def fetch():
+        month_start = month
+        # Calculate start of next month without external dependencies
+        if month.month == 12:
+            month_end = DateType(month.year + 1, 1, 1)
+        else:
+            month_end = DateType(month.year, month.month + 1, 1)
         query = """
             SELECT latitude, longitude,
                    AVG(temperature_2m) AS temperature_2m,
                    SUM(total_precipitation) AS total_precipitation,
                    AVG(potential_evaporation) AS potential_evaporation
             FROM gold.int_era5_for_stations
-            WHERE date_trunc('month', era5_date) = :month
+            WHERE era5_date >= :month_start AND era5_date < :month_end
             GROUP BY latitude, longitude
         """
-        result = await db.execute(text(query), {"month": month})
+        result = await db.execute(text(query), {"month_start": month_start, "month_end": month_end})
         return [dict(row) for row in result.mappings().all()]
 
     return await cached_response("era5_monthly", {"month": str(month)}, MONTHLY_TTL, fetch)

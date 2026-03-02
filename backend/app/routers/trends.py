@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.cache import cached_response
+from app.cache import cache_key, cached, get_redis
 from app.database import get_db
 from app.json_response import FastJSONResponse
 
@@ -24,7 +24,7 @@ async def get_piezo_trends(
     code_departement: Optional[str] = Query(None, min_length=1, max_length=3),
     classification_tendance: Optional[ClassificationTendanceType] = Query(None, description="Filter by trend classification"),
     fiabilite_min: Optional[float] = Query(None, description="Minimum fiabilite_tendance"),
-    limit: int = Query(10000, ge=1, le=50000),
+    limit: int = Query(500, ge=1, le=5000),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
@@ -75,7 +75,9 @@ async def get_piezo_trends(
         rows = [dict(row) for row in result.mappings().all()]
         return {"total": total, "rows": rows}
 
-    data = await fetch()
+    r = get_redis()
+    key = cache_key("piezo_trends", params)
+    data = await cached(r, key, TRENDS_TTL, fetch)
     response = FastJSONResponse(data["rows"])
     response.headers["X-Total-Count"] = str(data["total"])
     return response
@@ -88,7 +90,7 @@ async def get_hydro_trends(
     classification_tendance: Optional[ClassificationTendanceType] = Query(None, description="Filter by trend classification"),
     fiabilite_min: Optional[float] = Query(None, description="Minimum fiabilite_tendance"),
     grandeur_hydro_elab: Optional[str] = Query(None, description="Filter by grandeur_hydro_elab"),
-    limit: int = Query(10000, ge=1, le=50000),
+    limit: int = Query(500, ge=1, le=5000),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
@@ -143,7 +145,9 @@ async def get_hydro_trends(
         rows = [dict(row) for row in result.mappings().all()]
         return {"total": total, "rows": rows}
 
-    data = await fetch()
+    r = get_redis()
+    key = cache_key("hydro_trends", params)
+    data = await cached(r, key, TRENDS_TTL, fetch)
     response = FastJSONResponse(data["rows"])
     response.headers["X-Total-Count"] = str(data["total"])
     return response

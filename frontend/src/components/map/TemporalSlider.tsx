@@ -10,10 +10,10 @@ interface Props {
   onVariableChange: (v: 'total_precipitation' | 'temperature_2m') => void
 }
 
-const VARIABLE_LABELS = {
-  total_precipitation: 'Precipitations',
-  temperature_2m: 'Temperature',
-}
+const VARIABLE_LABELS: { key: 'total_precipitation' | 'temperature_2m'; label: string }[] = [
+  { key: 'total_precipitation', label: 'Pr\u00e9cipitations' },
+  { key: 'temperature_2m', label: 'Temp\u00e9rature' },
+]
 
 export function TemporalSlider({
   dates,
@@ -32,19 +32,20 @@ export function TemporalSlider({
     : ''
 
   return (
-    <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-10 bg-bg-card/95 backdrop-blur-sm rounded-xl border border-white/10 px-4 py-3 flex items-center gap-3 shadow-xl min-w-[500px]">
+    <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-10 bg-bg-card/95 backdrop-blur-sm rounded-xl border border-white/10 px-4 py-3 flex items-center gap-3 shadow-xl w-[calc(100%-2rem)] md:min-w-[500px] md:w-auto">
       <div className="flex gap-1">
-        {Object.entries(VARIABLE_LABELS).map(([key, label]) => (
+        {VARIABLE_LABELS.map((v) => (
           <button
-            key={key}
-            onClick={() => onVariableChange(key as any)}
+            key={v.key}
+            onClick={() => onVariableChange(v.key)}
+            aria-pressed={variable === v.key}
             className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${
-              variable === key
+              variable === v.key
                 ? 'bg-accent-cyan/20 text-accent-cyan'
                 : 'text-text-secondary hover:text-text-primary'
             }`}
           >
-            {label}
+            {v.label}
           </button>
         ))}
       </div>
@@ -53,6 +54,7 @@ export function TemporalSlider({
 
       <button
         onClick={() => onIndexChange(Math.max(0, currentIndex - 1))}
+        aria-label="Mois pr\u00e9c\u00e9dent"
         className="text-text-secondary hover:text-text-primary transition-colors"
         disabled={currentIndex === 0}
       >
@@ -69,6 +71,7 @@ export function TemporalSlider({
 
       <button
         onClick={() => onIndexChange(Math.min(dates.length - 1, currentIndex + 1))}
+        aria-label="Mois suivant"
         className="text-text-secondary hover:text-text-primary transition-colors"
         disabled={currentIndex === dates.length - 1}
       >
