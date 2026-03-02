@@ -7,7 +7,7 @@ from app.database import get_db
 
 router = APIRouter(prefix="/api/v1/stats", tags=["stats"])
 
-STATS_TTL = 3600
+STATS_TTL = 21600  # 6h
 
 
 @router.get("/national")

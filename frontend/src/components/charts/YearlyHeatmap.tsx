@@ -48,6 +48,16 @@ export function YearlyHeatmap({ data, valueKey, label }: Props) {
   const svgW = labelW + 12 * cellW + 10
   const svgH = 24 + years.length * cellH + 10
 
+  const legendW = 200
+  const legendH = 12
+  const legendSteps = [
+    { t: 0, color: '#ef4444', label: min === Infinity ? '' : min.toFixed(1) },
+    { t: 0.2, color: '#f97316', label: '' },
+    { t: 0.4, color: '#eab308', label: '' },
+    { t: 0.6, color: '#10b981', label: '' },
+    { t: 0.8, color: '#3b82f6', label: max === -Infinity ? '' : max.toFixed(1) },
+  ]
+
   return (
     <div>
       <h3 className="text-sm font-semibold text-text-primary mb-3">{label}</h3>
@@ -83,6 +93,24 @@ export function YearlyHeatmap({ data, valueKey, label }: Props) {
           ))}
         </svg>
       </div>
+
+      {/* Color scale legend */}
+      {min !== Infinity && max !== -Infinity && (
+        <div className="flex items-center gap-2 mt-3">
+          <span className="text-[10px] text-text-secondary">{min.toFixed(1)}</span>
+          <svg width={legendW} height={legendH} className="flex-shrink-0">
+            <defs>
+              <linearGradient id="heatmap-grad" x1="0" x2="1" y1="0" y2="0">
+                {legendSteps.map((s, i) => (
+                  <stop key={i} offset={`${s.t * 100}%`} stopColor={s.color} />
+                ))}
+              </linearGradient>
+            </defs>
+            <rect x={0} y={0} width={legendW} height={legendH} rx={3} fill="url(#heatmap-grad)" opacity={0.8} />
+          </svg>
+          <span className="text-[10px] text-text-secondary">{max.toFixed(1)}</span>
+        </div>
+      )}
     </div>
   )
 }

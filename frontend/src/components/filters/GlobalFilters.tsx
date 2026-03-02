@@ -33,10 +33,12 @@ export function GlobalFilters({ filters, setFilter, totalCount, filteredCount }:
     <div className="absolute top-4 right-4 z-10">
       <button
         onClick={() => setExpanded(!expanded)}
+        aria-label="Ouvrir les filtres"
+        aria-expanded={expanded}
         className="flex items-center gap-2 px-3 py-2 bg-bg-card/90 backdrop-blur-md border border-white/10 rounded-lg text-sm text-text-secondary hover:text-text-primary transition-colors"
       >
         <Filter className="w-4 h-4" />
-        Filtres
+        <span className="hidden sm:inline">Filtres</span>
         {filteredCount != null && totalCount != null && (
           <span className="text-xs font-mono text-accent-cyan">
             {filteredCount.toLocaleString('fr-FR')}/{totalCount.toLocaleString('fr-FR')}
@@ -85,6 +87,8 @@ export function GlobalFilters({ filters, setFilter, totalCount, filteredCount }:
                           : [...current, cls]
                         setFilter('classif', next.length > 0 ? next : undefined)
                       }}
+                      aria-label={`Filtrer classification ${CLASSIFICATION_LABELS[cls]}`}
+                      aria-pressed={active}
                       className="px-2 py-1 rounded text-xs font-medium transition-colors border"
                       style={{
                         backgroundColor: active ? `${color}30` : 'transparent',

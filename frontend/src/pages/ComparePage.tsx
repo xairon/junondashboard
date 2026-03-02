@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { X, Search, Loader2 } from 'lucide-react'
 import { useQueries } from '@tanstack/react-query'
 import { usePiezoStations, useHydroStations } from '../hooks/useStations'
@@ -17,22 +18,70 @@ interface SelectedStation {
 }
 
 export default function ComparePage() {
-  const [selected, setSelected] = useState<SelectedStation[]>([])
+  const [searchParams, setSearchParams] = useSearchParams()
   const [searchQuery, setSearchQuery] = useState('')
   const [normalized, setNormalized] = useState(false)
 
   const { data: piezoStations } = usePiezoStations()
   const { data: hydroStations } = useHydroStations()
 
+  // Derive selected stations from URL params
+  const selected = useMemo<SelectedStation[]>(() => {
+    const stationsParam = searchParams.get('stations')
+    const typesParam = searchParams.get('type')
+    if (!stationsParam) return []
+    const codes = stationsParam.split(',').filter(Boolean)
+    const types = typesParam ? typesParam.split(',').filter(Boolean) : []
+    return codes.map((code, i) => {
+      const type = (types[i] as 'piezo' | 'hydro') || 'piezo'
+      // Try to find name from loaded stations
+      let name = code
+      if (type === 'piezo' && piezoStations) {
+        const found = piezoStations.find((s: any) => s.code_bss === code)
+        if (found) name = found.nom_commune || code
+      } else if (type === 'hydro' && hydroStations) {
+        const found = hydroStations.find((s: any) => s.code_station === code)
+        if (found) name = found.libelle_station || code
+      }
+      return { code, name, type }
+    })
+  }, [searchParams, piezoStations, hydroStations])
+
+  // Update URL when selection changes
+  const updateUrl = useCallback((newSelected: SelectedStation[]) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      if (newSelected.length === 0) {
+        next.delete('stations')
+        next.delete('type')
+      } else {
+        next.set('stations', newSelected.map(s => s.code).join(','))
+        next.set('type', newSelected.map(s => s.type).join(','))
+      }
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
+
+  const addStation = useCallback((s: SelectedStation) => {
+    const newSelected = [...selected, s]
+    updateUrl(newSelected)
+    setSearchQuery('')
+  }, [selected, updateUrl])
+
+  const removeStation = useCallback((index: number) => {
+    const newSelected = selected.filter((_, j) => j !== index)
+    updateUrl(newSelected)
+  }, [selected, updateUrl])
+
   const searchResults = useMemo(() => {
     if (!searchQuery || searchQuery.length < 2) return []
     const q = searchQuery.toLowerCase()
     const piezo = (piezoStations ?? [])
-      .filter((s: any) => (s.nom_commune || s.code_bss || '').toLowerCase().includes(q))
+      .filter((s: any) => (s.nom_commune || s.code_bss || '').toLowerCase().includes(q) || (s.code_bss || '').toLowerCase().includes(q))
       .slice(0, 3)
       .map((s: any) => ({ code: s.code_bss, name: s.nom_commune || s.code_bss, type: 'piezo' as const }))
     const hydro = (hydroStations ?? [])
-      .filter((s: any) => (s.libelle_station || s.code_station || '').toLowerCase().includes(q))
+      .filter((s: any) => (s.libelle_station || s.code_station || '').toLowerCase().includes(q) || (s.code_station || '').toLowerCase().includes(q))
       .slice(0, 3)
       .map((s: any) => ({ code: s.code_station, name: s.libelle_station || s.code_station, type: 'hydro' as const }))
     return [...piezo, ...hydro].filter(s => !selected.some(sel => sel.code === s.code && sel.type === s.type))
@@ -46,8 +95,6 @@ export default function ComparePage() {
       enabled: !!s.code,
     })),
   })
-
-  const someLoading = queries.some(q => q.isLoading)
 
   // Merge data for chart - show chart from whichever queries have data
   const chartData = useMemo(() => {
@@ -102,7 +149,14 @@ export default function ComparePage() {
             >
               <span className="uppercase text-[10px] opacity-70">{s.type}</span>
               {s.name}
-              <button onClick={() => setSelected(selected.filter((_, j) => j !== i))}>
+              {/* Per-station loading indicator */}
+              {queries[i]?.isLoading && (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              )}
+              {queries[i]?.isError && (
+                <span className="text-red-400 text-[10px]" title="Erreur de chargement" role="alert">!</span>
+              )}
+              <button onClick={() => removeStation(i)} aria-label={`Retirer ${s.name}`}>
                 <X className="w-3 h-3" />
               </button>
             </span>
@@ -118,6 +172,7 @@ export default function ComparePage() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Ajouter..."
                   className="bg-transparent text-sm text-text-primary placeholder:text-text-secondary focus:outline-none w-32"
+                  aria-label="Rechercher une station a comparer"
                 />
               </div>
               {searchResults.length > 0 && (
@@ -125,7 +180,7 @@ export default function ComparePage() {
                   {searchResults.map((s) => (
                     <button
                       key={`${s.type}-${s.code}`}
-                      onClick={() => { setSelected([...selected, s]); setSearchQuery('') }}
+                      onClick={() => addStation(s)}
                       className="w-full text-left px-3 py-2 hover:bg-bg-hover text-sm text-text-primary flex items-center gap-2 border-b border-white/5 last:border-0"
                     >
                       <span className={`text-[10px] px-1 py-0.5 rounded ${s.type === 'piezo' ? 'bg-accent-cyan/20 text-accent-cyan' : 'bg-accent-indigo/20 text-accent-indigo'}`}>
@@ -146,12 +201,14 @@ export default function ComparePage() {
           <div className="flex gap-2">
             <button
               onClick={() => setNormalized(false)}
+              aria-label="Afficher valeurs brutes"
               className={`px-3 py-1.5 rounded-lg text-xs font-medium ${!normalized ? 'bg-accent-cyan/20 text-accent-cyan' : 'text-text-secondary'}`}
             >
               Valeurs brutes
             </button>
             <button
               onClick={() => setNormalized(true)}
+              aria-label="Afficher valeurs normalisees"
               className={`px-3 py-1.5 rounded-lg text-xs font-medium ${normalized ? 'bg-accent-cyan/20 text-accent-cyan' : 'text-text-secondary'}`}
             >
               Normalise (z-score)
@@ -159,11 +216,17 @@ export default function ComparePage() {
           </div>
         )}
 
-        {/* Loading indicator */}
-        {selected.length > 0 && someLoading && (
-          <div className="flex items-center gap-2 text-text-secondary text-sm">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Chargement des donnees...
+        {/* Per-station loading summary */}
+        {selected.length > 0 && queries.some(q => q.isLoading) && (
+          <div className="flex items-center gap-3 flex-wrap">
+            {selected.map((s, i) => (
+              queries[i]?.isLoading && (
+                <div key={s.code} className="flex items-center gap-1.5 text-text-secondary text-xs">
+                  <Loader2 className="w-3 h-3 animate-spin" style={{ color: COLORS[i] }} />
+                  <span>Chargement {s.name}...</span>
+                </div>
+              )
+            ))}
           </div>
         )}
 
@@ -204,7 +267,7 @@ export default function ComparePage() {
                     strokeWidth={1.5}
                     dot={false}
                     name={s.name}
-                    connectNulls
+                    connectNulls={false}
                   />
                 ))}
               </ComposedChart>

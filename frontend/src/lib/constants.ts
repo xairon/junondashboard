@@ -7,11 +7,12 @@ export const CLASSIFICATION_COLORS: Record<string, string> = {
 } as const
 
 export const CLASSIFICATION_LABELS: Record<string, string> = {
-  TRES_BAS: 'Tres bas',
+  TRES_BAS: 'Tr\u00e8s bas',
   BAS: 'Bas',
   NORMAL: 'Normal',
   HAUT: 'Haut',
-  TRES_HAUT: 'Tres haut',
+  TRES_HAUT: 'Tr\u00e8s haut',
+  UNKNOWN: 'Non class\u00e9',
 } as const
 
 export const CLASSIFICATION_ORDER = ['TRES_BAS', 'BAS', 'NORMAL', 'HAUT', 'TRES_HAUT'] as const

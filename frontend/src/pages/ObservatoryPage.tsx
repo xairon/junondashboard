@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ObservatoryMap } from '../components/map/ObservatoryMap'
 import { StationPopup } from '../components/map/StationPopup'
@@ -10,6 +10,20 @@ import { usePiezoStations, useHydroStations } from '../hooks/useStations'
 import { useERA5Dates, useERA5Monthly } from '../hooks/useERA5'
 import { useFilters } from '../hooks/useFilters'
 import { api } from '../lib/api'
+
+function formatRelativeTime(dateStr: string): string {
+  const now = Date.now()
+  const d = new Date(dateStr).getTime()
+  if (isNaN(d)) return ''
+  const diffMs = now - d
+  const diffMin = Math.floor(diffMs / 60_000)
+  if (diffMin < 60) return `il y a ${diffMin} min`
+  const diffH = Math.floor(diffMin / 60)
+  if (diffH < 24) return `il y a ${diffH}h`
+  const diffD = Math.floor(diffH / 24)
+  if (diffD < 30) return `il y a ${diffD}j`
+  return new Date(dateStr).toLocaleDateString('fr-FR')
+}
 
 export default function ObservatoryPage() {
   const { filters, setFilter, apiParams } = useFilters()
@@ -66,6 +80,20 @@ export default function ObservatoryPage() {
 
   const totalCount = (piezoStations?.length ?? 0) + (hydroStations?.length ?? 0)
 
+  // Compute most recent measurement date across all stations
+  const freshness = useMemo(() => {
+    let latest = ''
+    const allStations = [
+      ...(piezoStations ?? []),
+      ...(hydroStations ?? []),
+    ]
+    for (const s of allStations) {
+      const d = s.derniere_mesure || s.date_derniere_mesure
+      if (d && d > latest) latest = d
+    }
+    return latest
+  }, [piezoStations, hydroStations])
+
   return (
     <div className="relative h-full">
       <ObservatoryMap
@@ -74,6 +102,9 @@ export default function ObservatoryPage() {
         showPiezo={showPiezo}
         showHydro={showHydro}
         onStationClick={handleStationClick}
+        era5Data={era5Data}
+        era5Variable={era5Variable}
+        showERA5={showERA5}
       />
 
       <SearchBar
@@ -90,9 +121,11 @@ export default function ObservatoryPage() {
       />
 
       {/* Layer toggles */}
-      <div className="absolute top-4 left-[22rem] z-10 flex gap-1">
+      <div className="absolute top-16 md:top-4 left-4 md:left-[22rem] z-10 flex gap-1">
         <button
           onClick={() => setShowPiezo(!showPiezo)}
+          aria-label="Afficher couche piezometrique"
+          aria-pressed={showPiezo}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
             showPiezo
               ? 'bg-accent-cyan/20 text-accent-cyan border-accent-cyan/30'
@@ -103,6 +136,8 @@ export default function ObservatoryPage() {
         </button>
         <button
           onClick={() => setShowHydro(!showHydro)}
+          aria-label="Afficher couche hydrometrique"
+          aria-pressed={showHydro}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
             showHydro
               ? 'bg-accent-indigo/20 text-accent-indigo border-accent-indigo/30'
@@ -113,6 +148,8 @@ export default function ObservatoryPage() {
         </button>
         <button
           onClick={() => setShowERA5(!showERA5)}
+          aria-label="Afficher couche ERA5"
+          aria-pressed={showERA5}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
             showERA5
               ? 'bg-orange-500/20 text-orange-400 border-orange-500/30'
@@ -144,6 +181,15 @@ export default function ObservatoryPage() {
       ) : null}
 
       <KPIBar />
+
+      {/* Data freshness indicator */}
+      {freshness && (
+        <div className="absolute top-4 right-14 z-10 bg-bg-card/90 backdrop-blur-sm border border-white/10 rounded-lg px-2.5 py-1.5">
+          <p className="text-[10px] text-text-secondary">
+            Derni\u00e8re MAJ : <span className="text-text-primary font-medium">{formatRelativeTime(freshness)}</span>
+          </p>
+        </div>
+      )}
     </div>
   )
 }

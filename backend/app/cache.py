@@ -4,6 +4,8 @@ import logging
 from typing import Any, Callable, Awaitable
 
 import redis.asyncio as redis
+from starlette.responses import Response
+
 from app.config import settings
 from app.json_response import FastJSONResponse
 
@@ -51,7 +53,28 @@ async def cached(r: redis.Redis | None, key: str, ttl: int, fetch_fn: Callable[[
     return result
 
 
-async def cached_response(prefix: str, params: dict, ttl: int, fetch_fn) -> FastJSONResponse:
+async def cached_response(prefix: str, params: dict, ttl: int, fetch_fn) -> Response:
     r = get_redis()
     key = cache_key(prefix, params)
-    return FastJSONResponse(await cached(r, key, ttl, fetch_fn))
+
+    # Try to return raw cached bytes directly, bypassing double serialization
+    if r is not None:
+        try:
+            cached_val = await r.get(key)
+            if cached_val:
+                return Response(content=cached_val, media_type="application/json")
+        except Exception as e:
+            logger.debug("Redis error: %s", e)
+
+    # Cache miss: fetch, serialize once with orjson via FastJSONResponse, store raw JSON
+    result = await fetch_fn()
+    resp = FastJSONResponse(result)
+    body = resp.body  # orjson-serialized bytes
+
+    if r is not None:
+        try:
+            await r.setex(key, ttl, body)
+        except Exception as e:
+            logger.debug("Redis error: %s", e)
+
+    return resp

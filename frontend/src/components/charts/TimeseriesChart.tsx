@@ -108,6 +108,7 @@ export function TimeseriesChart({ data, valueKey, valueLabel, unit, precipKey = 
             strokeWidth={1.5}
             dot={false}
             name={valueLabel}
+            connectNulls={false}
           />
           <Brush
             dataKey={(d: any) => d.mois || d.date}
