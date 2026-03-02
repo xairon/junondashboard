@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useParams, useLocation, Link } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Info } from 'lucide-react'
 import { usePiezoStationDetail, useHydroStationDetail } from '../hooks/useStations'
 import { usePiezoMonthly, useHydroMonthly, usePiezoDaily, useHydroDaily, usePiezoYearly, useHydroYearly } from '../hooks/useTimeseries'
 import { StationKPICards } from '../components/station/StationKPICards'
@@ -16,6 +16,38 @@ const RESOLUTION_OPTIONS: { value: Resolution; label: string }[] = [
   { value: 'monthly', label: 'Mensuel' },
   { value: 'yearly', label: 'Annuel' },
 ]
+
+function formatDateFR(d: string | null | undefined): string {
+  if (!d) return '—'
+  return new Date(d).toLocaleDateString('fr-FR', { year: 'numeric', month: 'short' })
+}
+
+function formatDuration(months: number | null | undefined): string {
+  if (!months) return '—'
+  const years = Math.floor(months / 12)
+  const rem = months % 12
+  if (years === 0) return `${rem} mois`
+  if (rem === 0) return `${years} ans`
+  return `${years} ans ${rem} mois`
+}
+
+function formatPeriod(start: string | null | undefined, end: string | null | undefined): string {
+  if (!start && !end) return '—'
+  const fmt = (d: string) => new Date(d).toLocaleDateString('fr-FR', { year: 'numeric', month: 'short' })
+  if (start && end) return `${fmt(start)} – ${fmt(end)}`
+  if (end) return `jusqu'en ${fmt(end)}`
+  return `depuis ${fmt(start!)}`
+}
+
+function MetaRow({ label, value, mono = false }: { label: string; value: React.ReactNode; mono?: boolean }) {
+  if (value == null || value === '' || value === '—') return null
+  return (
+    <div className="flex items-start justify-between gap-2 py-1.5 border-b border-white/5 last:border-0">
+      <span className="text-xs text-gray-500 shrink-0">{label}</span>
+      <span className={`text-xs text-gray-200 text-right ${mono ? 'font-mono' : ''}`}>{value}</span>
+    </div>
+  )
+}
 
 /* Skeleton components */
 function SkeletonKPI() {
@@ -190,6 +222,175 @@ export default function StationPage() {
             </p>
           </div>
         </div>
+
+        {/* Fiche technique */}
+        <section className="bg-gray-900/50 rounded-xl border border-white/5 p-4">
+          <h2 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
+            <Info className="w-4 h-4" />
+            Fiche technique
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
+            {isPiezo ? (
+              <>
+                {/* Left column: temporal info */}
+                <div>
+                  <MetaRow
+                    label="Période de données"
+                    value={formatPeriod(station.premiere_mesure, station.derniere_mesure)}
+                  />
+                  <MetaRow
+                    label="Durée"
+                    value={formatDuration(station.nb_mois_total)}
+                  />
+                  <MetaRow
+                    label="Nombre de mesures"
+                    value={station.nb_mesures_total != null
+                      ? station.nb_mesures_total.toLocaleString('fr-FR')
+                      : null}
+                  />
+                  <MetaRow
+                    label="Dernière mesure"
+                    value={formatDateFR(station.derniere_mesure)}
+                  />
+                  <MetaRow
+                    label="Altitude station"
+                    value={station.altitude_station != null
+                      ? `${station.altitude_station.toFixed(0)} m NGF`
+                      : null}
+                  />
+                  <MetaRow
+                    label="Percentile année courante"
+                    value={station.percentile_derniere_annee != null
+                      ? `${Math.round(station.percentile_derniere_annee)}e centile`
+                      : null}
+                  />
+                  <MetaRow
+                    label="Profondeur moy. nappe"
+                    value={station.profondeur_moyenne_globale != null
+                      ? `${station.profondeur_moyenne_globale.toFixed(2)} m`
+                      : null}
+                  />
+                </div>
+                {/* Right column: technical info */}
+                <div>
+                  <MetaRow
+                    label="Code BSS"
+                    value={station.code_bss ?? null}
+                    mono
+                  />
+                  <MetaRow
+                    label="Code BDLISA"
+                    value={station.codes_bdlisa
+                      ? (
+                        <a
+                          href="https://bdlisa.eaufrance.fr/"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-400 hover:underline"
+                        >
+                          {station.codes_bdlisa}
+                        </a>
+                      )
+                      : null}
+                  />
+                  <MetaRow
+                    label="Niveau min historique"
+                    value={station.niveau_min_absolu != null
+                      ? `${station.niveau_min_absolu.toFixed(2)} m NGF`
+                      : null}
+                  />
+                  <MetaRow
+                    label="Niveau max historique"
+                    value={station.niveau_max_absolu != null
+                      ? `${station.niveau_max_absolu.toFixed(2)} m NGF`
+                      : null}
+                  />
+                  <MetaRow
+                    label="Amplitude totale"
+                    value={station.amplitude_totale != null
+                      ? `${station.amplitude_totale.toFixed(2)} m`
+                      : null}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Left column: temporal info */}
+                <div>
+                  <MetaRow
+                    label="Période de données"
+                    value={formatPeriod(station.premiere_mesure, station.derniere_mesure)}
+                  />
+                  <MetaRow
+                    label="Durée"
+                    value={formatDuration(station.nb_mois_total)}
+                  />
+                  <MetaRow
+                    label="Mise en service"
+                    value={formatDateFR(station.date_ouverture_station)}
+                  />
+                  <MetaRow
+                    label="Dernière mesure"
+                    value={formatDateFR(station.derniere_mesure)}
+                  />
+                  <MetaRow
+                    label="Percentile année courante"
+                    value={station.percentile_resultat_dern_annee != null
+                      ? `${Math.round(station.percentile_resultat_dern_annee)}e centile`
+                      : null}
+                  />
+                  <MetaRow
+                    label="Année dernier bilan"
+                    value={station.annee_dernier_bilan != null
+                      ? String(station.annee_dernier_bilan)
+                      : null}
+                  />
+                </div>
+                {/* Right column: technical info */}
+                <div>
+                  <MetaRow
+                    label="Code station"
+                    value={station.code_station ?? null}
+                    mono
+                  />
+                  <MetaRow
+                    label="Code cours d'eau"
+                    value={station.code_cours_eau
+                      ? (
+                        <a
+                          href={`https://www.sandre.eaufrance.fr/urn.php?urn=urn:sandre:data:cours_eau:FRA:cdcoursdeau:${station.code_cours_eau}:2023:::referentiel`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-400 hover:underline font-mono"
+                        >
+                          {station.code_cours_eau}
+                        </a>
+                      )
+                      : null}
+                  />
+                  <MetaRow
+                    label="Site hydrométrique"
+                    value={station.libelle_site && station.libelle_site !== name
+                      ? station.libelle_site
+                      : null}
+                  />
+                  <MetaRow
+                    label="Min historique"
+                    value={station.resultat_min_global != null
+                      ? `${station.resultat_min_global.toFixed(2)} ${hydroUnit}`
+                      : null}
+                  />
+                  <MetaRow
+                    label="Max historique"
+                    value={station.resultat_max_global != null
+                      ? `${station.resultat_max_global.toFixed(2)} ${hydroUnit}`
+                      : null}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        </section>
 
         {/* KPI Cards */}
         <StationKPICards station={station} type={type} />
