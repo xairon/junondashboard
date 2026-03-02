@@ -125,7 +125,7 @@ async def list_hydro_stations(
     return data
 
 
-@router.get("/piezo/{code_bss}", response_model=PiezoStationDetail)
+@router.get("/piezo/{code_bss:path}", response_model=PiezoStationDetail)
 async def get_piezo_station(
     code_bss: str,
     db: AsyncSession = Depends(get_db),

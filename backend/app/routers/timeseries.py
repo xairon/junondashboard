@@ -23,7 +23,7 @@ MONTHLY_TTL = 1800
 YEARLY_TTL = 3600
 
 
-@router.get("/piezo/{code_bss}/daily", response_model=list[DailyPiezoMeasurement])
+@router.get("/piezo/{code_bss:path}/daily", response_model=list[DailyPiezoMeasurement])
 async def get_piezo_daily(
     code_bss: str,
     start_date: Optional[date] = Query(None),
@@ -87,7 +87,7 @@ async def get_hydro_daily(
     return await cached(r, key, DAILY_TTL, fetch)
 
 
-@router.get("/piezo/{code_bss}/monthly", response_model=list[MonthlyPiezoMeasurement])
+@router.get("/piezo/{code_bss:path}/monthly", response_model=list[MonthlyPiezoMeasurement])
 async def get_piezo_monthly(
     code_bss: str,
     db: AsyncSession = Depends(get_db),
@@ -137,7 +137,7 @@ async def get_hydro_monthly(
     return await cached(r, key, MONTHLY_TTL, fetch)
 
 
-@router.get("/piezo/{code_bss}/yearly", response_model=list[YearlyPiezoStats])
+@router.get("/piezo/{code_bss:path}/yearly", response_model=list[YearlyPiezoStats])
 async def get_piezo_yearly(
     code_bss: str,
     db: AsyncSession = Depends(get_db),
