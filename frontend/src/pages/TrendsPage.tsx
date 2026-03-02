@@ -10,22 +10,6 @@ import {
   Tooltip, ResponsiveContainer, Cell, Legend,
 } from 'recharts'
 
-const TREND_COLORS: Record<string, string> = {
-  HAUSSE_FORTE: '#1d4ed8',
-  HAUSSE_SIGNIFICATIVE: '#3b82f6',
-  STABLE: '#10b981',
-  BAISSE_SIGNIFICATIVE: '#f97316',
-  BAISSE_FORTE: '#ef4444',
-}
-
-const TREND_LABELS: Record<string, string> = {
-  HAUSSE_FORTE: 'Hausse forte',
-  HAUSSE_SIGNIFICATIVE: 'Hausse significative',
-  STABLE: 'Stable',
-  BAISSE_SIGNIFICATIVE: 'Baisse significative',
-  BAISSE_FORTE: 'Baisse forte',
-}
-
 const TREND_ORDER = ['HAUSSE_FORTE', 'HAUSSE_SIGNIFICATIVE', 'STABLE', 'BAISSE_SIGNIFICATIVE', 'BAISSE_FORTE']
 
 export default function TrendsPage() {
@@ -95,14 +79,6 @@ export default function TrendsPage() {
   const normal = dataType === 'piezo' ? (stats?.piezo_normal ?? 0) : (stats?.hydro_normal ?? 0)
   const haut = dataType === 'piezo' ? (stats?.piezo_haut ?? 0) : (stats?.hydro_haut ?? 0)
   const tresHaut = dataType === 'piezo' ? (stats?.piezo_tres_haut ?? 0) : (stats?.hydro_tres_haut ?? 0)
-
-  const handleBarClick = (data: any, classKey: string) => {
-    if (!data || !data.activePayload?.length) return
-    const entry = data.activePayload[0].payload
-    const dept = entry.departement
-    const stations = entry._stationsByClass?.[classKey] ?? []
-    setSidePanelData({ dept, classification: classKey, stations })
-  }
 
   if (statsError || deptsError) {
     return (

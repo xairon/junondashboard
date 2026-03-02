@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { X, Search, Loader2 } from 'lucide-react'
 import { useQueries } from '@tanstack/react-query'

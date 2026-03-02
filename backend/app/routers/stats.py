@@ -24,7 +24,12 @@ async def get_national_stats(
                 count(*) FILTER (WHERE classification_derniere_annee = 'HAUT') AS piezo_haut,
                 count(*) FILTER (WHERE classification_derniere_annee = 'TRES_HAUT') AS piezo_tres_haut,
                 count(*) FILTER (WHERE classification_derniere_annee IS NULL) AS piezo_no_class,
-                (SELECT count(*) FROM gold.dim_hydro_stations) AS total_hydro
+                (SELECT count(*) FROM gold.dim_hydro_stations) AS total_hydro,
+                (SELECT count(*) FILTER (WHERE classification_resultat_dern_annee = 'TRES_BAS') FROM gold.dim_hydro_stations) AS hydro_tres_bas,
+                (SELECT count(*) FILTER (WHERE classification_resultat_dern_annee = 'BAS') FROM gold.dim_hydro_stations) AS hydro_bas,
+                (SELECT count(*) FILTER (WHERE classification_resultat_dern_annee = 'NORMAL') FROM gold.dim_hydro_stations) AS hydro_normal,
+                (SELECT count(*) FILTER (WHERE classification_resultat_dern_annee = 'HAUT') FROM gold.dim_hydro_stations) AS hydro_haut,
+                (SELECT count(*) FILTER (WHERE classification_resultat_dern_annee = 'TRES_HAUT') FROM gold.dim_hydro_stations) AS hydro_tres_haut
             FROM gold.dim_piezo_stations
         """
         result = await db.execute(text(query))

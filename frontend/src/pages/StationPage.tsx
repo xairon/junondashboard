@@ -163,7 +163,7 @@ export default function StationPage() {
     : (station.libelle_station || station.code_station)
 
   const valueKey = resolution === 'daily'
-    ? (isPiezo ? 'niveau_nappe_eau' : 'resultat_obs')
+    ? (isPiezo ? 'niveau_nappe_eau' : 'resultat_obs_elab')
     : (isPiezo ? 'niveau_moyen' : 'resultat_moyen')
   const valueLabel = isPiezo ? 'Niveau nappe (m NGF)' : 'D\u00e9bit (m\u00b3/s)'
   const unit = isPiezo ? 'm NGF' : 'm\u00b3/s'

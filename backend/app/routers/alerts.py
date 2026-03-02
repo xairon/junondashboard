@@ -80,7 +80,7 @@ async def list_alerts(
         total = count_result.scalar()
 
         # Data query with pagination
-        data_query = f"{union_query} LIMIT :limit OFFSET :offset"
+        data_query = f"{union_query} ORDER BY classification, code LIMIT :limit OFFSET :offset"
         bind_params["limit"] = limit
         bind_params["offset"] = offset
 

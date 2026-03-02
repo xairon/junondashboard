@@ -29,6 +29,7 @@ async def list_piezo_stations(
     classification: Optional[list[ClassificationType]] = Query(None, description="classification_derniere_annee values"),
     code_departement: Optional[str] = Query(None, min_length=1, max_length=3, description="Filter by department code"),
     bbox: Optional[str] = Query(None, description="Bounding box: min_lon,min_lat,max_lon,max_lat"),
+    search: Optional[str] = Query(None, min_length=2, max_length=100, description="Search by code_bss or nom_commune"),
     limit: int = Query(10000, ge=1, le=50000),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -39,6 +40,7 @@ async def list_piezo_stations(
         "classification": classification,
         "code_departement": code_departement,
         "bbox": bbox,
+        "search": search,
         "limit": limit,
         "offset": offset,
     }
@@ -71,6 +73,10 @@ async def list_piezo_stations(
                 where_clauses.append("longitude BETWEEN :min_lon AND :max_lon")
                 bind_params.update({"min_lat": min_lat, "max_lat": max_lat, "min_lon": min_lon, "max_lon": max_lon})
 
+        if search is not None:
+            where_clauses.append("(code_bss ILIKE :search OR nom_commune ILIKE :search)")
+            bind_params["search"] = f"%{search}%"
+
         where_sql = " AND ".join(where_clauses)
 
         # Count query
@@ -85,6 +91,7 @@ async def list_piezo_stations(
                    niveau_moyen_global, premiere_mesure, derniere_mesure, nb_mesures_total
             FROM gold.dim_piezo_stations
             WHERE {where_sql}
+            ORDER BY code_bss
             LIMIT :limit OFFSET :offset
         """
         bind_params["limit"] = limit
@@ -108,6 +115,7 @@ async def list_hydro_stations(
     code_departement: Optional[str] = Query(None, min_length=1, max_length=3, description="Filter by department code"),
     grandeur_hydro: Optional[str] = Query(None, description="Filter by grandeur_hydro_principale"),
     bbox: Optional[str] = Query(None, description="Bounding box: min_lon,min_lat,max_lon,max_lat"),
+    search: Optional[str] = Query(None, min_length=2, max_length=100, description="Search by code_station, libelle_station or nom_cours_eau"),
     limit: int = Query(10000, ge=1, le=50000),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -119,6 +127,7 @@ async def list_hydro_stations(
         "code_departement": code_departement,
         "grandeur_hydro": grandeur_hydro,
         "bbox": bbox,
+        "search": search,
         "limit": limit,
         "offset": offset,
     }
@@ -155,6 +164,10 @@ async def list_hydro_stations(
                 where_clauses.append("longitude_station BETWEEN :min_lon AND :max_lon")
                 bind_params.update({"min_lat": min_lat, "max_lat": max_lat, "min_lon": min_lon, "max_lon": max_lon})
 
+        if search is not None:
+            where_clauses.append("(code_station ILIKE :search OR libelle_station ILIKE :search OR nom_cours_eau ILIKE :search)")
+            bind_params["search"] = f"%{search}%"
+
         where_sql = " AND ".join(where_clauses)
 
         # Count query
@@ -170,6 +183,7 @@ async def list_hydro_stations(
                    resultat_moyen_global, premiere_mesure, derniere_mesure, nb_jours_total
             FROM gold.dim_hydro_stations
             WHERE {where_sql}
+            ORDER BY code_station
             LIMIT :limit OFFSET :offset
         """
         bind_params["limit"] = limit
