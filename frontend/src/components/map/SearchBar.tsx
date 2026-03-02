@@ -11,6 +11,18 @@ export function SearchBar({ piezoStations, hydroStations, onSelect }: Props) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+
+  // Click-outside handler
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   const results = useMemo(() => {
     if (!query || query.length < 2) return []
@@ -36,7 +48,7 @@ export function SearchBar({ piezoStations, hydroStations, onSelect }: Props) {
   }, [query, piezoStations, hydroStations])
 
   return (
-    <div className="absolute top-4 left-4 z-10 w-80">
+    <div ref={wrapperRef} className="absolute top-4 left-4 z-10 w-80">
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary" />
         <input

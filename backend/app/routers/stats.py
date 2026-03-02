@@ -2,9 +2,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.cache import cache_key, cached, get_redis
+from app.cache import cached_response
 from app.database import get_db
-from app.json_response import FastJSONResponse
 
 router = APIRouter(prefix="/api/v1/stats", tags=["stats"])
 
@@ -15,34 +14,29 @@ STATS_TTL = 3600
 async def get_national_stats(
     db: AsyncSession = Depends(get_db),
 ):
-    r = get_redis()
-    key = cache_key("national_stats", {})
-
     async def fetch():
         query = """
             SELECT
-                (SELECT count(*) FROM gold.dim_piezo_stations) AS total_piezo,
-                (SELECT count(*) FROM gold.dim_hydro_stations) AS total_hydro,
-                (SELECT count(*) FROM gold.dim_piezo_stations WHERE classification_derniere_annee = 'TRES_BAS') AS piezo_tres_bas,
-                (SELECT count(*) FROM gold.dim_piezo_stations WHERE classification_derniere_annee = 'BAS') AS piezo_bas,
-                (SELECT count(*) FROM gold.dim_piezo_stations WHERE classification_derniere_annee = 'NORMAL') AS piezo_normal,
-                (SELECT count(*) FROM gold.dim_piezo_stations WHERE classification_derniere_annee = 'HAUT') AS piezo_haut,
-                (SELECT count(*) FROM gold.dim_piezo_stations WHERE classification_derniere_annee = 'TRES_HAUT') AS piezo_tres_haut,
-                (SELECT count(*) FROM gold.dim_piezo_stations WHERE classification_derniere_annee IS NULL) AS piezo_no_class
+                count(*) AS total_piezo,
+                count(*) FILTER (WHERE classification_derniere_annee = 'TRES_BAS') AS piezo_tres_bas,
+                count(*) FILTER (WHERE classification_derniere_annee = 'BAS') AS piezo_bas,
+                count(*) FILTER (WHERE classification_derniere_annee = 'NORMAL') AS piezo_normal,
+                count(*) FILTER (WHERE classification_derniere_annee = 'HAUT') AS piezo_haut,
+                count(*) FILTER (WHERE classification_derniere_annee = 'TRES_HAUT') AS piezo_tres_haut,
+                count(*) FILTER (WHERE classification_derniere_annee IS NULL) AS piezo_no_class,
+                (SELECT count(*) FROM gold.dim_hydro_stations) AS total_hydro
+            FROM gold.dim_piezo_stations
         """
         result = await db.execute(text(query))
         return dict(result.mappings().fetchone())
 
-    return FastJSONResponse(await cached(r, key, STATS_TTL, fetch))
+    return await cached_response("national_stats", {}, STATS_TTL, fetch)
 
 
 @router.get("/departments")
 async def get_department_stats(
     db: AsyncSession = Depends(get_db),
 ):
-    r = get_redis()
-    key = cache_key("department_stats", {})
-
     async def fetch():
         query = """
             WITH piezo AS (
@@ -77,4 +71,4 @@ async def get_department_stats(
         result = await db.execute(text(query))
         return [dict(row) for row in result.mappings().all()]
 
-    return FastJSONResponse(await cached(r, key, STATS_TTL, fetch))
+    return await cached_response("department_stats", {}, STATS_TTL, fetch)

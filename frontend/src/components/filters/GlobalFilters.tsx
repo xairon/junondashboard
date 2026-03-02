@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Filter, ChevronDown, ChevronUp } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { Filter, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react'
 import { CLASSIFICATION_ORDER, CLASSIFICATION_LABELS, CLASSIFICATION_COLORS } from '../../lib/constants'
 import type { Filters } from '../../hooks/useFilters'
 
@@ -12,6 +12,22 @@ interface Props {
 
 export function GlobalFilters({ filters, setFilter, totalCount, filteredCount }: Props) {
   const [expanded, setExpanded] = useState(false)
+
+  const hasActiveFilter = useMemo(() => {
+    return (
+      filters.minObservations != null ||
+      filters.lastMeasurementAfter != null ||
+      (filters.classification != null && filters.classification.length > 0) ||
+      filters.codeDepartement != null
+    )
+  }, [filters])
+
+  const resetFilters = () => {
+    setFilter('min_obs', undefined)
+    setFilter('last_after', undefined)
+    setFilter('classif', undefined)
+    setFilter('dept', undefined)
+  }
 
   return (
     <div className="absolute top-4 right-4 z-10">
@@ -93,6 +109,16 @@ export function GlobalFilters({ filters, setFilter, totalCount, filteredCount }:
                 className="w-full px-2.5 py-1.5 bg-bg-primary border border-white/10 rounded text-sm text-text-primary focus:outline-none focus:border-accent-cyan/50"
               />
             </div>
+
+            {hasActiveFilter && (
+              <button
+                onClick={resetFilters}
+                className="flex items-center gap-1.5 w-full justify-center px-3 py-2 rounded-lg text-xs font-medium text-text-secondary hover:text-text-primary bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
+              >
+                <RotateCcw className="w-3 h-3" />
+                Reinitialiser
+              </button>
+            )}
           </div>
         </div>
       )}

@@ -5,6 +5,7 @@ from typing import Any, Callable, Awaitable
 
 import redis.asyncio as redis
 from app.config import settings
+from app.json_response import FastJSONResponse
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ def get_redis() -> redis.Redis | None:
 
 def cache_key(prefix: str, params: dict) -> str:
     raw = json.dumps(params, sort_keys=True, default=str)
-    h = hashlib.md5(raw.encode()).hexdigest()[:12]
+    h = hashlib.sha256(raw.encode()).hexdigest()[:16]
     return f"hydro:{prefix}:{h}"
 
 
@@ -36,15 +37,21 @@ async def cached(r: redis.Redis | None, key: str, ttl: int, fetch_fn: Callable[[
             cached_val = await r.get(key)
             if cached_val:
                 return json.loads(cached_val)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Redis error: %s", e)
 
     result = await fetch_fn()
 
     if r is not None:
         try:
             await r.setex(key, ttl, json.dumps(result, default=str))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Redis error: %s", e)
 
     return result
+
+
+async def cached_response(prefix: str, params: dict, ttl: int, fetch_fn) -> FastJSONResponse:
+    r = get_redis()
+    key = cache_key(prefix, params)
+    return FastJSONResponse(await cached(r, key, ttl, fetch_fn))

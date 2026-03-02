@@ -58,7 +58,7 @@ VITE_API_URL=http://localhost:8000/api/v1
 
 **Step 3: Create .env from .env.example with real values**
 
-Copy `.env.example` to `.env` and fill in the real database password: `postgres_default_pass_2024`
+Copy `.env.example` to `.env` and fill in the real database password: `<YOUR_DB_PASSWORD>`
 
 **Step 4: Create docker-compose.yml**
 

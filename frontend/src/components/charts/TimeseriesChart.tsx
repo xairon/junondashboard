@@ -25,8 +25,12 @@ export function TimeseriesChart({ data, valueKey, valueLabel, unit, precipKey = 
     if (period === Infinity) return data
     const cutoff = new Date()
     cutoff.setMonth(cutoff.getMonth() - period)
-    const cutoffStr = cutoff.toISOString().slice(0, 10)
-    return data.filter((d: any) => (d.mois || d.date) >= cutoffStr)
+    const cutoffMs = cutoff.getTime()
+    return data.filter((d: any) => {
+      const dateStr = d.mois || d.date
+      if (!dateStr) return false
+      return new Date(dateStr).getTime() >= cutoffMs
+    })
   }, [data, period])
 
   if (!filteredData.length) {

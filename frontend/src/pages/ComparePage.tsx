@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { X, Search } from 'lucide-react'
+import { X, Search, Loader2 } from 'lucide-react'
 import { useQueries } from '@tanstack/react-query'
 import { usePiezoStations, useHydroStations } from '../hooks/useStations'
 import { api } from '../lib/api'
@@ -35,7 +35,7 @@ export default function ComparePage() {
       .filter((s: any) => (s.libelle_station || s.code_station || '').toLowerCase().includes(q))
       .slice(0, 3)
       .map((s: any) => ({ code: s.code_station, name: s.libelle_station || s.code_station, type: 'hydro' as const }))
-    return [...piezo, ...hydro].filter(s => !selected.some(sel => sel.code === s.code))
+    return [...piezo, ...hydro].filter(s => !selected.some(sel => sel.code === s.code && sel.type === s.type))
   }, [searchQuery, piezoStations, hydroStations, selected])
 
   // Fetch monthly data for each selected station
@@ -47,22 +47,26 @@ export default function ComparePage() {
     })),
   })
 
-  // Merge data for chart
+  const someLoading = queries.some(q => q.isLoading)
+
+  // Merge data for chart - show chart from whichever queries have data
   const chartData = useMemo(() => {
-    if (!queries.length || queries.some(q => !q.data)) return []
+    const ready = queries.filter(q => !!q.data)
+    if (!ready.length) return []
 
     const allDates = new Set<string>()
-    queries.forEach((q) => {
+    ready.forEach((q) => {
       q.data?.forEach((d: any) => allDates.add(d.mois))
     })
 
     const sorted = Array.from(allDates).sort()
 
-    // Compute z-scores if normalized
+    // Compute z-scores if normalized (only from ready queries)
     const stats = queries.map((q, i) => {
       const values = (q.data ?? [])
         .map((d: any) => selected[i].type === 'piezo' ? d.niveau_moyen : d.resultat_moyen)
         .filter((v: any) => v != null) as number[]
+      if (!values.length) return { mean: 0, std: 1 }
       const mean = values.reduce((a, b) => a + b, 0) / values.length
       const std = Math.sqrt(values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length) || 1
       return { mean, std }
@@ -92,7 +96,7 @@ export default function ComparePage() {
         <div className="flex flex-wrap items-center gap-2">
           {selected.map((s, i) => (
             <span
-              key={s.code}
+              key={`${s.type}-${s.code}`}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border"
               style={{ borderColor: COLORS[i], color: COLORS[i], backgroundColor: `${COLORS[i]}15` }}
             >
@@ -120,7 +124,7 @@ export default function ComparePage() {
                 <div className="absolute top-full mt-1 left-0 bg-bg-card border border-white/10 rounded-lg overflow-hidden shadow-xl z-10 w-64">
                   {searchResults.map((s) => (
                     <button
-                      key={s.code}
+                      key={`${s.type}-${s.code}`}
                       onClick={() => { setSelected([...selected, s]); setSearchQuery('') }}
                       className="w-full text-left px-3 py-2 hover:bg-bg-hover text-sm text-text-primary flex items-center gap-2 border-b border-white/5 last:border-0"
                     >
@@ -155,6 +159,14 @@ export default function ComparePage() {
           </div>
         )}
 
+        {/* Loading indicator */}
+        {selected.length > 0 && someLoading && (
+          <div className="flex items-center gap-2 text-text-secondary text-sm">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Chargement des donnees...
+          </div>
+        )}
+
         {/* Chart */}
         {chartData.length > 0 && (
           <div className="bg-bg-card border border-white/5 rounded-xl p-5">
@@ -185,7 +197,7 @@ export default function ComparePage() {
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 {selected.map((s, i) => (
                   <Line
-                    key={s.code}
+                    key={`${s.type}-${s.code}`}
                     type="monotone"
                     dataKey={s.code}
                     stroke={COLORS[i]}

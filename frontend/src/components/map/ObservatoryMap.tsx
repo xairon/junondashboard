@@ -15,20 +15,19 @@ interface Props {
   onStationClick?: (station: any, type: 'piezo' | 'hydro') => void
 }
 
-function stationsToGeoJSON(stations: any[], classificationKey: string) {
+function stationsToGeoJSON(stations: any[], classificationKey: string, codeKey: string) {
   return {
     type: 'FeatureCollection' as const,
     features: stations
       .filter((s) => s.longitude != null && s.latitude != null)
       .map((s, i) => ({
         type: 'Feature' as const,
-        id: i,
         geometry: {
           type: 'Point' as const,
           coordinates: [s.longitude, s.latitude],
         },
         properties: {
-          _index: i,
+          code: s[codeKey] ?? String(i),
           classification: s[classificationKey] ?? 'UNKNOWN',
         },
       })),
@@ -66,10 +65,10 @@ export function ObservatoryMap({
   piezoDataRef.current = piezoStations
   hydroDataRef.current = hydroStations
 
-  const updateSource = useCallback((map: maplibregl.Map, sourceId: string, stations: any[] | undefined, classificationKey: string) => {
+  const updateSource = useCallback((map: maplibregl.Map, sourceId: string, stations: any[] | undefined, classificationKey: string, codeKey: string) => {
     const source = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined
     if (source) {
-      source.setData(stations?.length ? stationsToGeoJSON(stations, classificationKey) as any : { type: 'FeatureCollection', features: [] })
+      source.setData(stations?.length ? stationsToGeoJSON(stations, classificationKey, codeKey) as any : { type: 'FeatureCollection', features: [] })
     }
   }, [])
 
@@ -84,6 +83,10 @@ export function ObservatoryMap({
       maxBounds: [[-10, 40], [15, 52]],
     })
     map.addControl(new maplibregl.NavigationControl(), 'top-right')
+
+    map.on('error', (e) => {
+      console.error('MapLibre error:', e.error?.message ?? e)
+    })
 
     map.on('load', () => {
       mapLoadedRef.current = true
@@ -124,23 +127,23 @@ export function ObservatoryMap({
 
       // Populate with any data that already loaded
       if (piezoDataRef.current?.length) {
-        updateSource(map, 'piezo-stations', piezoDataRef.current, 'classification_derniere_annee')
+        updateSource(map, 'piezo-stations', piezoDataRef.current, 'classification_derniere_annee', 'code_bss')
       }
       if (hydroDataRef.current?.length) {
-        updateSource(map, 'hydro-stations', hydroDataRef.current, 'classification_resultat_dern_annee')
+        updateSource(map, 'hydro-stations', hydroDataRef.current, 'classification_resultat_dern_annee', 'code_station')
       }
 
       // Click handlers
       map.on('click', 'piezo-circles', (e) => {
         if (!e.features?.length || !piezoDataRef.current) return
-        const idx = e.features[0].properties?._index
-        const station = piezoDataRef.current[idx]
+        const code = e.features[0].properties?.code
+        const station = piezoDataRef.current.find(s => s.code_bss === code)
         if (station && onStationClickRef.current) onStationClickRef.current(station, 'piezo')
       })
       map.on('click', 'hydro-circles', (e) => {
         if (!e.features?.length || !hydroDataRef.current) return
-        const idx = e.features[0].properties?._index
-        const station = hydroDataRef.current[idx]
+        const code = e.features[0].properties?.code
+        const station = hydroDataRef.current.find(s => s.code_station === code)
         if (station && onStationClickRef.current) onStationClickRef.current(station, 'hydro')
       })
 
@@ -163,13 +166,13 @@ export function ObservatoryMap({
   // Update piezo data
   useEffect(() => {
     if (!mapRef.current || !mapLoadedRef.current) return
-    updateSource(mapRef.current, 'piezo-stations', piezoStations, 'classification_derniere_annee')
+    updateSource(mapRef.current, 'piezo-stations', piezoStations, 'classification_derniere_annee', 'code_bss')
   }, [piezoStations, updateSource])
 
   // Update hydro data
   useEffect(() => {
     if (!mapRef.current || !mapLoadedRef.current) return
-    updateSource(mapRef.current, 'hydro-stations', hydroStations, 'classification_resultat_dern_annee')
+    updateSource(mapRef.current, 'hydro-stations', hydroStations, 'classification_resultat_dern_annee', 'code_station')
   }, [hydroStations, updateSource])
 
   // Toggle visibility

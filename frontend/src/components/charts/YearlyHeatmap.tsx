@@ -52,7 +52,7 @@ export function YearlyHeatmap({ data, valueKey, label }: Props) {
     <div>
       <h3 className="text-sm font-semibold text-text-primary mb-3">{label}</h3>
       <div className="overflow-x-auto">
-        <svg width={svgW} height={svgH} className="font-mono">
+        <svg width={svgW} height={svgH} className="font-mono" role="img" aria-label={`${label} - heatmap annuelle`}>
           {MONTH_LABELS.map((m, i) => (
             <text key={i} x={labelW + i * cellW + cellW / 2} y={14} textAnchor="middle"
               fill="#9ca3af" fontSize={10}>{m}</text>

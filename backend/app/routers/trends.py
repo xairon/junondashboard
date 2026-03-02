@@ -1,27 +1,26 @@
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.cache import cache_key, cached, get_redis
+from app.cache import cached_response
 from app.database import get_db
-from app.json_response import FastJSONResponse
 
 router = APIRouter(prefix="/api/v1/trends", tags=["trends"])
 
 TRENDS_TTL = 3600
 
+SaisonType = Literal["annuel", "printemps", "ete", "automne", "hiver"]
+
 
 @router.get("/piezo")
 async def get_piezo_trends(
-    saison: Optional[str] = Query(None),
-    code_departement: Optional[str] = Query(None),
+    saison: Optional[SaisonType] = Query(None),
+    code_departement: Optional[str] = Query(None, min_length=1, max_length=3),
     db: AsyncSession = Depends(get_db),
 ):
-    r = get_redis()
     params = {"saison": saison, "code_departement": code_departement}
-    key = cache_key("piezo_trends", params)
 
     async def fetch():
         conditions = ["1=1"]
@@ -44,18 +43,16 @@ async def get_piezo_trends(
         result = await db.execute(text(query), bind_params)
         return [dict(row) for row in result.mappings().all()]
 
-    return FastJSONResponse(await cached(r, key, TRENDS_TTL, fetch))
+    return await cached_response("piezo_trends", params, TRENDS_TTL, fetch)
 
 
 @router.get("/hydro")
 async def get_hydro_trends(
-    saison: Optional[str] = Query(None),
-    code_departement: Optional[str] = Query(None),
+    saison: Optional[SaisonType] = Query(None),
+    code_departement: Optional[str] = Query(None, min_length=1, max_length=3),
     db: AsyncSession = Depends(get_db),
 ):
-    r = get_redis()
     params = {"saison": saison, "code_departement": code_departement}
-    key = cache_key("hydro_trends", params)
 
     async def fetch():
         conditions = ["1=1"]
@@ -78,4 +75,4 @@ async def get_hydro_trends(
         result = await db.execute(text(query), bind_params)
         return [dict(row) for row in result.mappings().all()]
 
-    return FastJSONResponse(await cached(r, key, TRENDS_TTL, fetch))
+    return await cached_response("hydro_trends", params, TRENDS_TTL, fetch)

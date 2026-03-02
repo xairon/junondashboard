@@ -13,7 +13,14 @@ async function fetchJson<T>(path: string, params?: Record<string, string | strin
     })
   }
   const res = await fetch(url.toString())
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
+  if (!res.ok) {
+    let detail = ''
+    try {
+      const body = await res.json()
+      detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)
+    } catch {}
+    throw new Error(`API ${res.status}${detail ? `: ${detail}` : ''}`)
+  }
   return res.json()
 }
 

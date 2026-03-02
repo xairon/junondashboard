@@ -5,9 +5,8 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.cache import cache_key, cached, get_redis
+from app.cache import cached_response
 from app.database import get_db
-from app.json_response import FastJSONResponse
 
 
 router = APIRouter(prefix="/api/v1/timeseries", tags=["timeseries"])
@@ -24,9 +23,7 @@ async def get_piezo_daily(
     end_date: Optional[date] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    r = get_redis()
     params = {"code_bss": code_bss, "start_date": str(start_date), "end_date": str(end_date)}
-    key = cache_key("piezo_daily", params)
 
     async def fetch():
         query = """
@@ -46,7 +43,7 @@ async def get_piezo_daily(
         result = await db.execute(text(query), bind_params)
         return [dict(row) for row in result.mappings().all()]
 
-    return FastJSONResponse(await cached(r, key, DAILY_TTL, fetch))
+    return await cached_response("piezo_daily", params, DAILY_TTL, fetch)
 
 
 @router.get("/hydro/{code_station}/daily")
@@ -56,9 +53,7 @@ async def get_hydro_daily(
     end_date: Optional[date] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    r = get_redis()
     params = {"code_station": code_station, "start_date": str(start_date), "end_date": str(end_date)}
-    key = cache_key("hydro_daily", params)
 
     async def fetch():
         query = """
@@ -78,7 +73,7 @@ async def get_hydro_daily(
         result = await db.execute(text(query), bind_params)
         return [dict(row) for row in result.mappings().all()]
 
-    return FastJSONResponse(await cached(r, key, DAILY_TTL, fetch))
+    return await cached_response("hydro_daily", params, DAILY_TTL, fetch)
 
 
 @router.get("/piezo/{code_bss:path}/monthly")
@@ -86,9 +81,6 @@ async def get_piezo_monthly(
     code_bss: str,
     db: AsyncSession = Depends(get_db),
 ):
-    r = get_redis()
-    key = cache_key("piezo_monthly", {"code_bss": code_bss})
-
     async def fetch():
         query = """
             SELECT mois, niveau_moyen, niveau_min, niveau_max, amplitude_mensuelle,
@@ -103,7 +95,7 @@ async def get_piezo_monthly(
         result = await db.execute(text(query), {"code": code_bss})
         return [dict(row) for row in result.mappings().all()]
 
-    return FastJSONResponse(await cached(r, key, MONTHLY_TTL, fetch))
+    return await cached_response("piezo_monthly", {"code_bss": code_bss}, MONTHLY_TTL, fetch)
 
 
 @router.get("/hydro/{code_station}/monthly")
@@ -111,9 +103,6 @@ async def get_hydro_monthly(
     code_station: str,
     db: AsyncSession = Depends(get_db),
 ):
-    r = get_redis()
-    key = cache_key("hydro_monthly", {"code_station": code_station})
-
     async def fetch():
         query = """
             SELECT mois, resultat_moyen, resultat_min, resultat_max, amplitude_mensuelle,
@@ -128,7 +117,7 @@ async def get_hydro_monthly(
         result = await db.execute(text(query), {"code": code_station})
         return [dict(row) for row in result.mappings().all()]
 
-    return FastJSONResponse(await cached(r, key, MONTHLY_TTL, fetch))
+    return await cached_response("hydro_monthly", {"code_station": code_station}, MONTHLY_TTL, fetch)
 
 
 @router.get("/piezo/{code_bss:path}/yearly")
@@ -136,9 +125,6 @@ async def get_piezo_yearly(
     code_bss: str,
     db: AsyncSession = Depends(get_db),
 ):
-    r = get_redis()
-    key = cache_key("piezo_yearly", {"code_bss": code_bss})
-
     async def fetch():
         query = """
             SELECT annee, niveau_moyen_annuel, niveau_min_annuel, niveau_max_annuel,
@@ -153,7 +139,7 @@ async def get_piezo_yearly(
         result = await db.execute(text(query), {"code": code_bss})
         return [dict(row) for row in result.mappings().all()]
 
-    return FastJSONResponse(await cached(r, key, YEARLY_TTL, fetch))
+    return await cached_response("piezo_yearly", {"code_bss": code_bss}, YEARLY_TTL, fetch)
 
 
 @router.get("/hydro/{code_station}/yearly")
@@ -161,9 +147,6 @@ async def get_hydro_yearly(
     code_station: str,
     db: AsyncSession = Depends(get_db),
 ):
-    r = get_redis()
-    key = cache_key("hydro_yearly", {"code_station": code_station})
-
     async def fetch():
         query = """
             SELECT annee, resultat_moyen_annuel, resultat_min_annuel, resultat_max_annuel,
@@ -177,4 +160,4 @@ async def get_hydro_yearly(
         result = await db.execute(text(query), {"code": code_station})
         return [dict(row) for row in result.mappings().all()]
 
-    return FastJSONResponse(await cached(r, key, YEARLY_TTL, fetch))
+    return await cached_response("hydro_yearly", {"code_station": code_station}, YEARLY_TTL, fetch)

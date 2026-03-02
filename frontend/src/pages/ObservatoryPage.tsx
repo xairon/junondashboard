@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { ObservatoryMap } from '../components/map/ObservatoryMap'
 import { StationPopup } from '../components/map/StationPopup'
 import { KPIBar } from '../components/map/KPIBar'
@@ -8,11 +9,16 @@ import { GlobalFilters } from '../components/filters/GlobalFilters'
 import { usePiezoStations, useHydroStations } from '../hooks/useStations'
 import { useERA5Dates, useERA5Monthly } from '../hooks/useERA5'
 import { useFilters } from '../hooks/useFilters'
+import { api } from '../lib/api'
 
 export default function ObservatoryPage() {
   const { filters, setFilter, apiParams } = useFilters()
   const { data: piezoStations } = usePiezoStations(apiParams)
   const { data: hydroStations } = useHydroStations(apiParams)
+  const { data: nationalStats } = useQuery({
+    queryKey: ['stats', 'national'],
+    queryFn: api.stats.national,
+  })
 
   const [selectedStation, setSelectedStation] = useState<{ station: any; type: 'piezo' | 'hydro' } | null>(null)
   const [showPiezo, setShowPiezo] = useState(true)
@@ -36,23 +42,23 @@ export default function ObservatoryPage() {
     }
   }, [era5Dates])
 
-  // Playback logic
+  // Playback logic - era5Dates intentionally excluded from deps to avoid interval leak
   useEffect(() => {
-    if (era5Playing && era5Dates?.length) {
-      playIntervalRef.current = setInterval(() => {
-        setERA5DateIndex(prev => {
-          if (prev >= (era5Dates?.length ?? 1) - 1) {
-            setERA5Playing(false)
-            return prev
-          }
-          return prev + 1
-        })
-      }, 800)
-    }
-    return () => {
-      if (playIntervalRef.current) clearInterval(playIntervalRef.current)
-    }
-  }, [era5Playing, era5Dates])
+    if (!era5Playing || !era5Dates?.length) return
+    const total = era5Dates.length
+    const id = setInterval(() => {
+      setERA5DateIndex(prev => {
+        if (prev >= total - 1) {
+          setERA5Playing(false)
+          return prev
+        }
+        return prev + 1
+      })
+    }, 800)
+    playIntervalRef.current = id
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [era5Playing])
 
   const handleStationClick = useCallback((station: any, type: 'piezo' | 'hydro') => {
     setSelectedStation({ station, type })
@@ -80,7 +86,7 @@ export default function ObservatoryPage() {
         filters={filters}
         setFilter={setFilter}
         filteredCount={totalCount}
-        totalCount={28660}
+        totalCount={(nationalStats?.total_piezo ?? 0) + (nationalStats?.total_hydro ?? 0)}
       />
 
       {/* Layer toggles */}

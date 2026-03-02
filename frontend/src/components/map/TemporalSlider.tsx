@@ -1,4 +1,3 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
 import { Play, Pause, ChevronLeft, ChevronRight } from 'lucide-react'
 
 interface Props {
@@ -62,6 +61,7 @@ export function TemporalSlider({
 
       <button
         onClick={onPlayToggle}
+        aria-label={isPlaying ? 'Pause' : 'Lecture'}
         className="w-7 h-7 rounded-full bg-accent-cyan/20 text-accent-cyan flex items-center justify-center hover:bg-accent-cyan/30 transition-colors"
       >
         {isPlaying ? <Pause size={12} /> : <Play size={12} />}
@@ -81,6 +81,7 @@ export function TemporalSlider({
         max={dates.length - 1}
         value={currentIndex}
         onChange={(e) => onIndexChange(Number(e.target.value))}
+        aria-label="Curseur temporel ERA5"
         className="flex-1 h-1 accent-accent-cyan cursor-pointer"
       />
 

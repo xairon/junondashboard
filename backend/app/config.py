@@ -1,8 +1,10 @@
+from typing import Literal
+
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    db_host: str = "dib-2019006065"
+    db_host: str = "localhost"
     db_port: int = 49502
     db_name: str = "postgres"
     db_user: str = "postgres"
@@ -10,6 +12,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379/0"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
+    allowed_origins: list[str] = ["http://localhost:5173"]
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
     @property
     def database_url(self) -> str:
