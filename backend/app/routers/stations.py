@@ -7,11 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cache import cache_key, cached, get_redis
 from app.database import get_db
+from app.json_response import FastJSONResponse
 from app.models.station import (
     HydroStationDetail,
-    HydroStationMap,
     PiezoStationDetail,
-    PiezoStationMap,
 )
 
 router = APIRouter(prefix="/api/v1/stations", tags=["stations"])
@@ -21,7 +20,7 @@ HYDRO_LIST_TTL = 3600
 DETAIL_TTL = 3600
 
 
-@router.get("/piezo", response_model=list[PiezoStationMap])
+@router.get("/piezo")
 async def list_piezo_stations(
     min_observations: Optional[float] = Query(None, description="Minimum nb_mesures_total"),
     last_measurement_after: Optional[date] = Query(None, description="derniere_mesure >= value"),
@@ -41,10 +40,9 @@ async def list_piezo_stations(
     async def fetch():
         query = """
             SELECT code_bss, latitude, longitude, nom_commune, code_departement,
-                   nom_departement, libelle_eh, niveau_alerte, tendance_classification,
-                   classification_derniere_annee, niveau_moyen_global, niveau_derniere_annee,
-                   premiere_mesure, derniere_mesure, nb_mesures_total
-            FROM gold.stations_piezo_carte
+                   nom_departement, classification_derniere_annee,
+                   niveau_moyen_global, premiere_mesure, derniere_mesure, nb_mesures_total
+            FROM gold.dim_piezo_stations
             WHERE 1=1
         """
         bind_params = {}
@@ -70,10 +68,10 @@ async def list_piezo_stations(
         return [dict(row) for row in rows]
 
     data = await cached(r, key, PIEZO_LIST_TTL, fetch)
-    return data
+    return FastJSONResponse(data)
 
 
-@router.get("/hydro", response_model=list[HydroStationMap])
+@router.get("/hydro")
 async def list_hydro_stations(
     min_observations: Optional[float] = Query(None, description="Minimum nb_jours_total"),
     last_measurement_after: Optional[date] = Query(None, description="derniere_mesure >= value"),
@@ -92,11 +90,11 @@ async def list_hydro_stations(
 
     async def fetch():
         query = """
-            SELECT code_station, latitude, longitude, code_departement, nom_departement,
-                   libelle_station, libelle_cours_eau, grandeur_hydro_principale,
-                   classification_resultat_dern_annee, resultat_moyen_global,
-                   premiere_mesure, derniere_mesure, nb_jours_total
-            FROM gold.stations_hydro_carte
+            SELECT code_station, longitude_station AS longitude, latitude_station AS latitude,
+                   code_departement, nom_departement, libelle_station, nom_cours_eau,
+                   grandeur_hydro_principale, classification_resultat_dern_annee,
+                   resultat_moyen_global, premiere_mesure, derniere_mesure, nb_jours_total
+            FROM gold.dim_hydro_stations
             WHERE 1=1
         """
         bind_params = {}
@@ -122,7 +120,7 @@ async def list_hydro_stations(
         return [dict(row) for row in rows]
 
     data = await cached(r, key, HYDRO_LIST_TTL, fetch)
-    return data
+    return FastJSONResponse(data)
 
 
 @router.get("/piezo/{code_bss:path}", response_model=PiezoStationDetail)

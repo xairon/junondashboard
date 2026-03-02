@@ -7,3 +7,6 @@ __pycache__/
 .ruff_cache/
 redis-data/
 .DS_Store
+*.png
+*.jpeg
+.playwright-mcp/

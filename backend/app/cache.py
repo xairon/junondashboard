@@ -10,7 +10,10 @@ logger = logging.getLogger(__name__)
 
 pool: redis.ConnectionPool | None = None
 try:
-    pool = redis.ConnectionPool.from_url(settings.redis_url, decode_responses=True)
+    pool = redis.ConnectionPool.from_url(
+        settings.redis_url, decode_responses=True,
+        socket_connect_timeout=1, socket_timeout=1,
+    )
 except Exception:
     logger.warning("Redis not configured, caching disabled")
 

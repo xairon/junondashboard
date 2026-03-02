@@ -7,14 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cache import cache_key, cached, get_redis
 from app.database import get_db
-from app.models.timeseries import (
-    DailyHydroMeasurement,
-    DailyPiezoMeasurement,
-    MonthlyHydroMeasurement,
-    MonthlyPiezoMeasurement,
-    YearlyHydroStats,
-    YearlyPiezoStats,
-)
+from app.json_response import FastJSONResponse
+
 
 router = APIRouter(prefix="/api/v1/timeseries", tags=["timeseries"])
 
@@ -23,7 +17,7 @@ MONTHLY_TTL = 1800
 YEARLY_TTL = 3600
 
 
-@router.get("/piezo/{code_bss:path}/daily", response_model=list[DailyPiezoMeasurement])
+@router.get("/piezo/{code_bss:path}/daily")
 async def get_piezo_daily(
     code_bss: str,
     start_date: Optional[date] = Query(None),
@@ -52,10 +46,10 @@ async def get_piezo_daily(
         result = await db.execute(text(query), bind_params)
         return [dict(row) for row in result.mappings().all()]
 
-    return await cached(r, key, DAILY_TTL, fetch)
+    return FastJSONResponse(await cached(r, key, DAILY_TTL, fetch))
 
 
-@router.get("/hydro/{code_station}/daily", response_model=list[DailyHydroMeasurement])
+@router.get("/hydro/{code_station}/daily")
 async def get_hydro_daily(
     code_station: str,
     start_date: Optional[date] = Query(None),
@@ -84,10 +78,10 @@ async def get_hydro_daily(
         result = await db.execute(text(query), bind_params)
         return [dict(row) for row in result.mappings().all()]
 
-    return await cached(r, key, DAILY_TTL, fetch)
+    return FastJSONResponse(await cached(r, key, DAILY_TTL, fetch))
 
 
-@router.get("/piezo/{code_bss:path}/monthly", response_model=list[MonthlyPiezoMeasurement])
+@router.get("/piezo/{code_bss:path}/monthly")
 async def get_piezo_monthly(
     code_bss: str,
     db: AsyncSession = Depends(get_db),
@@ -109,10 +103,10 @@ async def get_piezo_monthly(
         result = await db.execute(text(query), {"code": code_bss})
         return [dict(row) for row in result.mappings().all()]
 
-    return await cached(r, key, MONTHLY_TTL, fetch)
+    return FastJSONResponse(await cached(r, key, MONTHLY_TTL, fetch))
 
 
-@router.get("/hydro/{code_station}/monthly", response_model=list[MonthlyHydroMeasurement])
+@router.get("/hydro/{code_station}/monthly")
 async def get_hydro_monthly(
     code_station: str,
     db: AsyncSession = Depends(get_db),
@@ -134,10 +128,10 @@ async def get_hydro_monthly(
         result = await db.execute(text(query), {"code": code_station})
         return [dict(row) for row in result.mappings().all()]
 
-    return await cached(r, key, MONTHLY_TTL, fetch)
+    return FastJSONResponse(await cached(r, key, MONTHLY_TTL, fetch))
 
 
-@router.get("/piezo/{code_bss:path}/yearly", response_model=list[YearlyPiezoStats])
+@router.get("/piezo/{code_bss:path}/yearly")
 async def get_piezo_yearly(
     code_bss: str,
     db: AsyncSession = Depends(get_db),
@@ -159,10 +153,10 @@ async def get_piezo_yearly(
         result = await db.execute(text(query), {"code": code_bss})
         return [dict(row) for row in result.mappings().all()]
 
-    return await cached(r, key, YEARLY_TTL, fetch)
+    return FastJSONResponse(await cached(r, key, YEARLY_TTL, fetch))
 
 
-@router.get("/hydro/{code_station}/yearly", response_model=list[YearlyHydroStats])
+@router.get("/hydro/{code_station}/yearly")
 async def get_hydro_yearly(
     code_station: str,
     db: AsyncSession = Depends(get_db),
@@ -183,4 +177,4 @@ async def get_hydro_yearly(
         result = await db.execute(text(query), {"code": code_station})
         return [dict(row) for row in result.mappings().all()]
 
-    return await cached(r, key, YEARLY_TTL, fetch)
+    return FastJSONResponse(await cached(r, key, YEARLY_TTL, fetch))

@@ -1,5 +1,4 @@
 from datetime import date
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
@@ -7,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cache import cache_key, cached, get_redis
 from app.database import get_db
-from app.models.era5 import ERA5GridPoint, ERA5Snapshot
+from app.json_response import FastJSONResponse
 
 router = APIRouter(prefix="/api/v1/era5", tags=["era5"])
 
@@ -16,7 +15,7 @@ SNAPSHOT_TTL = 86400
 DATES_TTL = 86400
 
 
-@router.get("/grid", response_model=list[ERA5GridPoint])
+@router.get("/grid")
 async def get_era5_grid(
     db: AsyncSession = Depends(get_db),
 ):
@@ -33,10 +32,10 @@ async def get_era5_grid(
         rows = result.mappings().all()
         return [dict(row) for row in rows]
 
-    return await cached(r, key, GRID_TTL, fetch)
+    return FastJSONResponse(await cached(r, key, GRID_TTL, fetch))
 
 
-@router.get("/snapshot", response_model=list[ERA5Snapshot])
+@router.get("/snapshot")
 async def get_era5_snapshot(
     date: date = Query(..., alias="date", description="Date for the ERA5 snapshot"),
     db: AsyncSession = Depends(get_db),
@@ -55,7 +54,7 @@ async def get_era5_snapshot(
         rows = result.mappings().all()
         return [dict(row) for row in rows]
 
-    return await cached(r, key, SNAPSHOT_TTL, fetch)
+    return FastJSONResponse(await cached(r, key, SNAPSHOT_TTL, fetch))
 
 
 @router.get("/dates")
@@ -74,7 +73,7 @@ async def get_era5_dates(
         result = await db.execute(text(query))
         return [str(row["month"]) for row in result.mappings().all()]
 
-    return await cached(r, key, DATES_TTL, fetch)
+    return FastJSONResponse(await cached(r, key, DATES_TTL, fetch))
 
 
 @router.get("/monthly")
@@ -98,4 +97,4 @@ async def get_era5_monthly(
         result = await db.execute(text(query), {"month": month})
         return [dict(row) for row in result.mappings().all()]
 
-    return await cached(r, key, SNAPSHOT_TTL, fetch)
+    return FastJSONResponse(await cached(r, key, SNAPSHOT_TTL, fetch))

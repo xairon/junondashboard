@@ -9,14 +9,15 @@ import { SeasonalityChart } from '../components/charts/SeasonalityChart'
 import { YearlyHeatmap } from '../components/charts/YearlyHeatmap'
 
 export default function StationPage() {
-  const { code } = useParams<{ code: string }>()
+  const params = useParams()
   const location = useLocation()
   const isPiezo = location.pathname.includes('/piezo/')
+  const code = params['*'] || ''
 
-  const { data: piezoStation, isLoading: piezoLoading } = usePiezoStationDetail(isPiezo ? code! : '')
-  const { data: hydroStation, isLoading: hydroLoading } = useHydroStationDetail(!isPiezo ? code! : '')
-  const { data: piezoMonthly } = usePiezoMonthly(isPiezo ? code! : '')
-  const { data: hydroMonthly } = useHydroMonthly(!isPiezo ? code! : '')
+  const { data: piezoStation, isLoading: piezoLoading } = usePiezoStationDetail(isPiezo ? code : '')
+  const { data: hydroStation, isLoading: hydroLoading } = useHydroStationDetail(!isPiezo ? code : '')
+  const { data: piezoMonthly } = usePiezoMonthly(isPiezo ? code : '')
+  const { data: hydroMonthly } = useHydroMonthly(!isPiezo ? code : '')
 
   const station = isPiezo ? piezoStation : hydroStation
   const monthly = isPiezo ? piezoMonthly : hydroMonthly

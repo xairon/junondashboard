@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cache import cache_key, cached, get_redis
 from app.database import get_db
+from app.json_response import FastJSONResponse
 
 router = APIRouter(prefix="/api/v1/stats", tags=["stats"])
 
@@ -32,7 +33,7 @@ async def get_national_stats(
         result = await db.execute(text(query))
         return dict(result.mappings().fetchone())
 
-    return await cached(r, key, STATS_TTL, fetch)
+    return FastJSONResponse(await cached(r, key, STATS_TTL, fetch))
 
 
 @router.get("/departments")
@@ -76,4 +77,4 @@ async def get_department_stats(
         result = await db.execute(text(query))
         return [dict(row) for row in result.mappings().all()]
 
-    return await cached(r, key, STATS_TTL, fetch)
+    return FastJSONResponse(await cached(r, key, STATS_TTL, fetch))

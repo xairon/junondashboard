@@ -19,7 +19,7 @@ export function StationKPICards({ station, type }: Props) {
           title: 'Tendance',
           value: station.slope_niveau != null ? `${station.slope_niveau > 0 ? '+' : ''}${formatNumber(station.slope_niveau, 3)}` : 'N/A',
           unit: 'm/an',
-          sub: station.r2_niveau != null ? <span className="text-xs text-text-secondary">R\u00b2 = {formatNumber(station.r2_niveau, 2)}</span> : null,
+          sub: station.r2_niveau != null ? <span className="text-xs text-text-secondary">R² = {formatNumber(station.r2_niveau, 2)}</span> : null,
         },
         {
           title: 'Precipitations moy.',

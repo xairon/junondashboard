@@ -11,8 +11,8 @@ export const router = createBrowserRouter([
     element: <Layout />,
     children: [
       { path: '/', element: <ObservatoryPage /> },
-      { path: '/station/piezo/:code', element: <StationPage /> },
-      { path: '/station/hydro/:code', element: <StationPage /> },
+      { path: '/station/piezo/*', element: <StationPage /> },
+      { path: '/station/hydro/*', element: <StationPage /> },
       { path: '/trends', element: <TrendsPage /> },
       { path: '/alerts', element: <AlertsPage /> },
       { path: '/compare', element: <ComparePage /> },

@@ -68,9 +68,6 @@ export default function ObservatoryPage() {
         showPiezo={showPiezo}
         showHydro={showHydro}
         onStationClick={handleStationClick}
-        era5Data={showERA5 ? era5Data : undefined}
-        era5Variable={era5Variable}
-        showERA5={showERA5}
       />
 
       <SearchBar

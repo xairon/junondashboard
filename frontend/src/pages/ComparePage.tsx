@@ -1,9 +1,8 @@
 import { useState, useMemo } from 'react'
-import { X, Plus, Search } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
+import { X, Search } from 'lucide-react'
+import { useQueries } from '@tanstack/react-query'
 import { usePiezoStations, useHydroStations } from '../hooks/useStations'
 import { api } from '../lib/api'
-import { formatNumber } from '../lib/utils'
 import {
   ComposedChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Legend,
@@ -40,13 +39,12 @@ export default function ComparePage() {
   }, [searchQuery, piezoStations, hydroStations, selected])
 
   // Fetch monthly data for each selected station
-  const queries = selected.map((s) => {
-    const queryKey = ['compare', s.type, 'monthly', s.code]
-    return useQuery({
-      queryKey,
+  const queries = useQueries({
+    queries: selected.map((s) => ({
+      queryKey: ['compare', s.type, 'monthly', s.code],
       queryFn: () => s.type === 'piezo' ? api.timeseries.piezoMonthly(s.code) : api.timeseries.hydroMonthly(s.code),
       enabled: !!s.code,
-    })
+    })),
   })
 
   // Merge data for chart

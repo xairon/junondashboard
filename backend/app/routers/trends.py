@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cache import cache_key, cached, get_redis
 from app.database import get_db
+from app.json_response import FastJSONResponse
 
 router = APIRouter(prefix="/api/v1/trends", tags=["trends"])
 
@@ -43,7 +44,7 @@ async def get_piezo_trends(
         result = await db.execute(text(query), bind_params)
         return [dict(row) for row in result.mappings().all()]
 
-    return await cached(r, key, TRENDS_TTL, fetch)
+    return FastJSONResponse(await cached(r, key, TRENDS_TTL, fetch))
 
 
 @router.get("/hydro")
@@ -77,4 +78,4 @@ async def get_hydro_trends(
         result = await db.execute(text(query), bind_params)
         return [dict(row) for row in result.mappings().all()]
 
-    return await cached(r, key, TRENDS_TTL, fetch)
+    return FastJSONResponse(await cached(r, key, TRENDS_TTL, fetch))
