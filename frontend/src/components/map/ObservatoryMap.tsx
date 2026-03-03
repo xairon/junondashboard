@@ -329,7 +329,7 @@ export function ObservatoryMap({
               'fill-color': '#ffffff',
               'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.10, 0],
             },
-          })
+          }, 'piezo-clusters')
           map.addLayer({
             id: 'regions-line',
             type: 'line',
@@ -339,7 +339,7 @@ export function ObservatoryMap({
               'line-color': 'rgba(255,255,255,0.25)',
               'line-width': 1,
             },
-          })
+          }, 'piezo-clusters')
 
           // Hover regions
           let hoveredRegionId: number | null = null
@@ -397,7 +397,7 @@ export function ObservatoryMap({
                 0,
               ],
             },
-          })
+          }, 'piezo-clusters')
           map.addLayer({
             id: 'depts-line',
             type: 'line',
@@ -407,7 +407,7 @@ export function ObservatoryMap({
               'line-color': 'rgba(255,255,255,0.2)',
               'line-width': 0.8,
             },
-          })
+          }, 'piezo-clusters')
 
           // Hover departments
           let hoveredDeptId: number | null = null
