@@ -1,16 +1,12 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState, useCallback, useMemo } from 'react'
 import { ObservatoryMap } from '../components/map/ObservatoryMap'
 import { StationPopup } from '../components/map/StationPopup'
 import { KPIBar } from '../components/map/KPIBar'
 import { SearchBar } from '../components/map/SearchBar'
-import { TemporalSlider } from '../components/map/TemporalSlider'
 import { GlobalFilters } from '../components/filters/GlobalFilters'
 import { useStationsGeoJSON } from '../hooks/useStations'
 import type { StationGeoJSONFeature } from '../lib/types'
-import { useERA5Dates, useERA5Monthly } from '../hooks/useERA5'
 import { useFilters } from '../hooks/useFilters'
-import { api } from '../lib/api'
 
 // Simplified direct mapping: code_district (first char of code_cours_eau) -> CdBH
 // Only handles direct letter matches (A,C,D,E,F,G,H); B->B1/B2 handled by startsWith
@@ -25,12 +21,8 @@ function matchesBassin(codeDistrict: string | null | undefined, codeBassin: stri
 }
 
 export default function ObservatoryPage() {
-  const { filters, setFilter, apiParams } = useFilters()
+  const { filters, setFilter, apiParams: _apiParams } = useFilters()
   const { data: geojsonData, isError: geojsonError } = useStationsGeoJSON()
-  const { data: nationalStats } = useQuery({
-    queryKey: ['stats', 'national'],
-    queryFn: api.stats.national,
-  })
 
   const filteredFeatures = useMemo<StationGeoJSONFeature[]>(() => {
     const all = geojsonData?.features ?? []
@@ -52,44 +44,12 @@ export default function ObservatoryPage() {
   const [showPiezo, setShowPiezo] = useState(true)
   const [showHydro, setShowHydro] = useState(true)
 
-  // ERA5 temporal controls
-  const [showERA5, setShowERA5] = useState(false)
-  const [era5Variable, setERA5Variable] = useState<'total_precipitation' | 'temperature_2m'>('total_precipitation')
-  const [era5DateIndex, setERA5DateIndex] = useState(0)
-  const [era5Playing, setERA5Playing] = useState(false)
-  const playIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
+  // Calques panel state
+  const [showCalques, setShowCalques] = useState(false)
+  const [showRegions, setShowRegions] = useState(false)
+  const [showDepts, setShowDepts] = useState(false)
   const [showBdlisa, setShowBdlisa] = useState(false)
   const [showSandre, setShowSandre] = useState(false)
-
-  const { data: era5Dates } = useERA5Dates()
-  const currentMonth = era5Dates?.[era5DateIndex]
-  const { data: era5Data } = useERA5Monthly(showERA5 ? currentMonth : undefined)
-
-  // Set slider to last date when dates load
-  useEffect(() => {
-    if (era5Dates?.length) {
-      setERA5DateIndex(era5Dates.length - 1)
-    }
-  }, [era5Dates])
-
-  // Playback logic - era5Dates intentionally excluded from deps to avoid interval leak
-  useEffect(() => {
-    if (!era5Playing || !era5Dates?.length) return
-    const total = era5Dates.length
-    const id = setInterval(() => {
-      setERA5DateIndex(prev => {
-        if (prev >= total - 1) {
-          setERA5Playing(false)
-          return prev
-        }
-        return prev + 1
-      })
-    }, 800)
-    playIntervalRef.current = id
-    return () => clearInterval(id)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [era5Playing])
 
   const handleStationClick = useCallback((code: string, type: 'piezo' | 'hydro') => {
     setSelectedStation({ code, type })
@@ -107,8 +67,6 @@ export default function ObservatoryPage() {
     setFilter('bassin', code ?? undefined)
   }, [setFilter])
 
-  const totalCount = filteredFeatures.length
-
   return (
     <div className="relative h-full">
       {geojsonError && (
@@ -123,10 +81,9 @@ export default function ObservatoryPage() {
         showHydro={showHydro}
         onStationClick={handleStationClick}
         onDeptClick={handleDeptClick}
-        era5Data={era5Data}
-        era5Variable={era5Variable}
-        showERA5={showERA5}
         activeCodeDepartement={filters.codeDepartement}
+        showRegions={showRegions}
+        showDepts={showDepts}
         showBdlisa={showBdlisa}
         showSandre={showSandre}
         onBdlisaClick={handleBdlisaClick}
@@ -147,7 +104,7 @@ export default function ObservatoryPage() {
         totalCount={geojsonData?.features?.length ?? 0}
       />
 
-      {/* Layer toggles */}
+      {/* Layer toggles — Piézo + Hydro only */}
       <div className="absolute top-16 md:top-4 left-4 md:left-[22rem] z-10 flex gap-1">
         <button
           onClick={() => setShowPiezo(!showPiezo)}
@@ -165,30 +122,41 @@ export default function ObservatoryPage() {
         >
           Hydro
         </button>
+      </div>
+
+      {/* Calques floating panel — right side, below map nav controls */}
+      <div className="absolute top-[8.5rem] right-3 z-10">
         <button
-          onClick={() => setShowERA5(!showERA5)}
-          aria-label="Afficher couche ERA5"
-          aria-pressed={showERA5}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${showERA5 ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' : 'bg-bg-card/90 text-text-secondary border-white/10'}`}
+          onClick={() => setShowCalques(v => !v)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${showCalques ? 'bg-bg-card border-white/20 text-text-primary' : 'bg-bg-card/80 border-white/10 text-text-secondary hover:text-text-primary'}`}
         >
-          ERA5
+          {/* Layers icon: stacked lines */}
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+          Calques
         </button>
-        <button
-          onClick={() => setShowBdlisa(v => !v)}
-          aria-pressed={showBdlisa}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${showBdlisa ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400' : 'bg-bg-card/80 border-white/10 text-text-secondary hover:text-text-primary'}`}
-        >
-          <div className="w-2 h-2 rounded-full bg-emerald-400" />
-          Nappes
-        </button>
-        <button
-          onClick={() => setShowSandre(v => !v)}
-          aria-pressed={showSandre}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${showSandre ? 'bg-blue-500/20 border-blue-500/50 text-blue-400' : 'bg-bg-card/80 border-white/10 text-text-secondary hover:text-text-primary'}`}
-        >
-          <div className="w-2 h-2 rounded-full bg-blue-400" />
-          Bassins
-        </button>
+        {showCalques && (
+          <div className="mt-1 bg-bg-card/95 backdrop-blur-sm border border-white/10 rounded-lg p-3 min-w-[10rem]">
+            <p className="text-[10px] font-semibold text-white/50 uppercase tracking-wider mb-2">Couches géographiques</p>
+            {([
+              { label: 'Régions', state: showRegions, setState: setShowRegions },
+              { label: 'Départements', state: showDepts, setState: setShowDepts },
+              { label: 'Nappes (BDLISA)', state: showBdlisa, setState: setShowBdlisa },
+              { label: 'Bassins (SANDRE)', state: showSandre, setState: setShowSandre },
+            ] as const).map(({ label, state, setState }) => (
+              <label key={label} className="flex items-center gap-2 py-1 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={state}
+                  onChange={e => setState(e.target.checked)}
+                  className="w-3.5 h-3.5 accent-accent-cyan rounded"
+                />
+                <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors">{label}</span>
+              </label>
+            ))}
+          </div>
+        )}
       </div>
 
       {selectedStation && (
@@ -198,18 +166,6 @@ export default function ObservatoryPage() {
           onClose={() => setSelectedStation(null)}
         />
       )}
-
-      {showERA5 && era5Dates?.length ? (
-        <TemporalSlider
-          dates={era5Dates}
-          currentIndex={era5DateIndex}
-          onIndexChange={setERA5DateIndex}
-          isPlaying={era5Playing}
-          onPlayToggle={() => setERA5Playing(!era5Playing)}
-          variable={era5Variable}
-          onVariableChange={setERA5Variable}
-        />
-      ) : null}
 
       <KPIBar />
     </div>
