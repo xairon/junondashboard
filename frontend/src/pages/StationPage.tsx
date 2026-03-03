@@ -101,7 +101,9 @@ export default function StationPage() {
   const params = useParams()
   const location = useLocation()
   const isPiezo = location.pathname.includes('/piezo/')
-  const code = params['*'] || ''
+  // Wildcard captures everything after /station/ including the type prefix.
+  // Strip the leading "piezo/" or "hydro/" to get the actual station code (e.g. "05604X0162/SF1").
+  const code = (params['*'] || '').replace(/^(piezo|hydro)\//, '')
 
   const [resolution, setResolution] = useState<Resolution>('monthly')
 
