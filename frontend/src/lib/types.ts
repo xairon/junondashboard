@@ -75,6 +75,7 @@ export interface YearlyPiezoData {
   classification: string | null
   precipitation_totale_annuelle: number | null
   bilan_hydrique_annuel: number | null
+  percentile_niveau_historique: number | null
 }
 
 export interface YearlyHydroData {
@@ -84,6 +85,7 @@ export interface YearlyHydroData {
   resultat_max: number | null
   nb_jours_mesures: number | null
   classification: string | null
+  percentile_resultat_historique: number | null
 }
 
 // Stats types
@@ -132,6 +134,13 @@ export interface ERA5GridPoint {
   temperature_2m: number | null
   total_precipitation: number | null
   potential_evaporation: number | null
+}
+
+export interface StationPercentiles {
+  p10: number | null
+  p25: number | null
+  p75: number | null
+  p90: number | null
 }
 
 // Classification
