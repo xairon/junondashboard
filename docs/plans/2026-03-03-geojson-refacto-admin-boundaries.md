@@ -1144,7 +1144,7 @@ git commit -m "feat: add interactive region and department boundary layers with 
 
 ---
 
-### Task 8 : Push final
+### Task 8 : Push intermédiaire
 
 **Step 1 : Vérifier que tout compile et que la preview est propre**
 ```bash
@@ -1153,6 +1153,914 @@ cd /e/hydro_dashboard/frontend && npx tsc --noEmit
 
 **Step 2 : Vérifier les erreurs console dans le navigateur**
 (Utiliser `preview_console_logs` ou les DevTools du navigateur)
+
+**Step 3 : Push vers GitLab**
+```bash
+cd /e/hydro_dashboard && git push origin master
+```
+
+---
+
+### Task 9 : Backend GeoJSON + Types + useFilters — BDLISA & bassins
+
+**Context:** Ajouter `codes_bdlisa` (piézos) et `code_district` (hydros) à l'endpoint `/stations/geojson`, étendre les types TypeScript et le hook `useFilters` pour ces deux nouveaux critères.
+
+**Files:**
+- Modify: `backend/app/routers/stations.py`
+- Modify: `frontend/src/lib/types.ts`
+- Modify: `frontend/src/hooks/useFilters.ts`
+- Modify: `frontend/src/components/filters/GlobalFilters.tsx`
+
+**Step 1 : Étendre le SELECT piézo dans `stations.py`**
+
+Dans la `piezo_query` (ligne ~215), ajouter `codes_bdlisa` :
+```python
+piezo_query = """
+    SELECT code_bss AS code, 'piezo' AS type,
+           latitude, longitude, nom_commune AS commune,
+           code_departement, nom_departement AS departement,
+           classification_derniere_annee AS classification,
+           codes_bdlisa
+    FROM gold.dim_piezo_stations
+    WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+"""
+```
+
+Et dans le bloc properties du piézo :
+```python
+"properties": {
+    "code": r["code"],
+    "type": r["type"],
+    "classification": r["classification"],
+    "commune": r["commune"],
+    "departement": r["departement"],
+    "code_departement": r["code_departement"],
+    "codes_bdlisa": r["codes_bdlisa"],
+},
+```
+
+**Step 2 : Étendre le SELECT hydro dans `stations.py`**
+
+Dans la `hydro_query` (ligne ~243), ajouter `LEFT(code_cours_eau, 1) AS code_district` :
+```python
+hydro_query = """
+    SELECT code_station AS code, 'hydro' AS type,
+           latitude_station AS latitude, longitude_station AS longitude,
+           libelle_station AS commune,
+           code_departement, nom_departement AS departement,
+           classification_resultat_dern_annee AS classification,
+           LEFT(code_cours_eau, 1) AS code_district
+    FROM gold.dim_hydro_stations
+    WHERE latitude_station IS NOT NULL AND longitude_station IS NOT NULL
+"""
+```
+
+Et dans le bloc properties hydro :
+```python
+"properties": {
+    "code": r["code"],
+    "type": r["type"],
+    "classification": r["classification"],
+    "commune": r["commune"],
+    "departement": r["departement"],
+    "code_departement": r["code_departement"],
+    "code_district": r["code_district"],
+},
+```
+
+**Step 3 : Invalider le cache Redis**
+```bash
+docker exec hydro-redis redis-cli DEL "hydro:stations_geojson:type=all"
+# Ou vider tout le cache (plus sûr après modification du schéma)
+docker exec hydro-redis redis-cli FLUSHDB
+```
+
+**Step 4 : Vérifier l'endpoint backend**
+```bash
+curl -s "http://localhost:8001/api/v1/stations/geojson?type=piezo" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+f = d['features'][0]
+print('piezo props:', list(f['properties'].keys()))
+print('codes_bdlisa sample:', f['properties'].get('codes_bdlisa'))
+"
+
+curl -s "http://localhost:8001/api/v1/stations/geojson?type=hydro" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+f = d['features'][0]
+print('hydro props:', list(f['properties'].keys()))
+print('code_district sample:', f['properties'].get('code_district'))
+"
+```
+Expected: Les deux propriétés apparaissent dans les résultats.
+
+**Step 5 : Étendre `StationGeoJSONProperties` dans `types.ts`**
+
+Remplacer l'interface existante :
+```typescript
+export interface StationGeoJSONProperties {
+  code: string
+  type: 'piezo' | 'hydro'
+  classification: string | null
+  commune: string | null
+  departement: string | null
+  code_departement: string | null
+  codes_bdlisa?: string | null    // piezo uniquement
+  code_district?: string | null   // hydro uniquement — premier char de code_cours_eau
+}
+```
+
+**Step 6 : Étendre `Filters` et `useFilters`**
+
+Dans `frontend/src/hooks/useFilters.ts`, étendre l'interface `Filters` :
+```typescript
+export interface Filters {
+  minObservations?: number
+  lastMeasurementAfter?: string
+  classification?: string[]
+  codeDepartement?: string
+  codeBdlisa?: string    // code BDLISA N2 (ex: "101AC")
+  codeBassin?: string    // code district SANDRE (ex: "06")
+}
+```
+
+Ajouter dans le `useMemo` des filters :
+```typescript
+codeBdlisa: searchParams.get('bdlisa') ?? undefined,
+codeBassin: searchParams.get('bassin') ?? undefined,
+```
+
+**Step 7 : Étendre le reset dans `GlobalFilters.tsx`**
+
+Dans la fonction `resetFilters` :
+```typescript
+const resetFilters = () => {
+  setFilter('min_obs', undefined)
+  setFilter('last_after', undefined)
+  setFilter('classif', undefined)
+  setFilter('dept', undefined)
+  setFilter('bdlisa', undefined)
+  setFilter('bassin', undefined)
+}
+```
+
+Et dans `hasActiveFilter` :
+```typescript
+const hasActiveFilter = useMemo(() => {
+  return (
+    filters.minObservations != null ||
+    filters.lastMeasurementAfter != null ||
+    (filters.classification != null && filters.classification.length > 0) ||
+    filters.codeDepartement != null ||
+    filters.codeBdlisa != null ||
+    filters.codeBassin != null
+  )
+}, [filters])
+```
+
+**Step 8 : Vérifier TypeScript**
+```bash
+cd /e/hydro_dashboard/frontend && npx tsc --noEmit 2>&1 | head -20
+```
+
+**Step 9 : Commit**
+```bash
+git add backend/app/routers/stations.py \
+        frontend/src/lib/types.ts \
+        frontend/src/hooks/useFilters.ts \
+        frontend/src/components/filters/GlobalFilters.tsx
+git commit -m "feat: add codes_bdlisa + code_district to geojson endpoint, extend Filters"
+```
+
+---
+
+### Task 10 : Télécharger BDLISA N2 + SANDRE districts GeoJSON
+
+**Files:**
+- Create: `frontend/public/geo/bdlisa.geojson`
+- Create: `frontend/public/geo/bassins.geojson`
+
+> Le dossier `frontend/public/geo/` existe déjà (créé en Task 6).
+
+**Step 1 : Télécharger les districts SANDRE (bassins hydrographiques DCE)**
+```bash
+curl -L \
+  "https://services.sandre.eaufrance.fr/geo/zonage?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAME=BassinDCE&OUTPUTFORMAT=application/json&SRSNAME=EPSG:4326" \
+  -o /e/hydro_dashboard/frontend/public/geo/bassins.geojson
+```
+
+Si cette URL retourne une erreur, essayer :
+```bash
+curl -L \
+  "https://www.sandre.eaufrance.fr/api/zonagehydrographique/bassins.geojson" \
+  -o /e/hydro_dashboard/frontend/public/geo/bassins.geojson
+```
+
+En dernier recours, télécharger manuellement depuis https://www.sandre.eaufrance.fr (section "Téléchargements" → "Bassins hydrographiques") et placer le fichier dans `frontend/public/geo/bassins.geojson`.
+
+**Step 2 : Vérifier les propriétés du fichier bassins**
+```bash
+python3 -c "
+import json
+with open('/e/hydro_dashboard/frontend/public/geo/bassins.geojson') as f:
+    d = json.load(f)
+print('Nombre de districts:', len(d['features']))
+print('Propriétés:', d['features'][0]['properties'])
+"
+```
+Expected : 7 à 16 features (districts métropolitains + DOM-TOM). Les propriétés doivent contenir un code (ex: `CdBH` ou `code`) et un nom (ex: `LbBH` ou `nom`).
+
+> **Important :** noter les noms exacts des propriétés retournées — ils seront utilisés dans Task 12.
+
+**Step 3 : Télécharger les unités hydrogéologiques BDLISA N2**
+```bash
+curl -L \
+  "https://geoservices.brgm.fr/geologie?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAME=GAS:UnitesHydrogeologiquesNiv2&OUTPUTFORMAT=application/json&SRSNAME=EPSG:4326" \
+  -o /e/hydro_dashboard/frontend/public/geo/bdlisa.geojson
+```
+
+Si cette URL échoue, essayer depuis l'API BRGM :
+```bash
+curl -L \
+  "https://data.brgm.fr/opendata/bdlisa/bdlisa_niv2.geojson" \
+  -o /e/hydro_dashboard/frontend/public/geo/bdlisa.geojson
+```
+
+En dernier recours, télécharger depuis https://bdlisa.eaufrance.fr (onglet "Données") ou depuis https://infoterre.brgm.fr/telechargement/ et convertir si nécessaire :
+```bash
+# Si le fichier est un shapefile (.zip), convertir avec ogr2ogr
+ogr2ogr -f GeoJSON -t_srs EPSG:4326 \
+  /e/hydro_dashboard/frontend/public/geo/bdlisa.geojson \
+  /chemin/vers/bdlisa_niv2.shp
+```
+
+**Step 4 : Vérifier les propriétés du fichier bdlisa**
+```bash
+python3 -c "
+import json
+with open('/e/hydro_dashboard/frontend/public/geo/bdlisa.geojson') as f:
+    d = json.load(f)
+print('Nombre d\'unités N2:', len(d['features']))
+print('Propriétés:', d['features'][0]['properties'])
+# Chercher les natures présentes
+natures = set(f['properties'].get('nature') or f['properties'].get('NatureUH') or f['properties'].get('NATURE') or '' for f in d['features'])
+print('Natures trouvées:', natures)
+"
+```
+Expected : 400-600 features. Les propriétés doivent contenir un code (quelques chars alphanum), un nom, et un type de nappe (nature/NatureUH).
+
+> **Important :** noter les noms exacts des propriétés `code`, `nom`, `nature` — ils seront utilisés en Task 12 et 13.
+
+**Step 5 : Vérifier la correspondance codes_bdlisa ↔ BDLISA N2**
+```bash
+python3 -c "
+import json
+# Charger un échantillon de stations piézo
+import urllib.request
+url = 'http://localhost:8001/api/v1/stations/geojson?type=piezo'
+with urllib.request.urlopen(url) as r:
+    stations = json.load(r)
+
+# Charger BDLISA N2
+with open('/e/hydro_dashboard/frontend/public/geo/bdlisa.geojson') as f:
+    bdlisa = json.load(f)
+
+# Trouver le nom de la propriété code dans BDLISA
+code_field = None
+for candidate in ['code', 'Code', 'CODE', 'CdUH', 'cd_uh']:
+    if candidate in bdlisa['features'][0]['properties']:
+        code_field = candidate
+        break
+print('Champ code BDLISA:', code_field)
+
+# Tester le matching
+sample = [s for s in stations['features'] if s['properties'].get('codes_bdlisa')][:5]
+for s in sample:
+    codes_bdlisa = s['properties']['codes_bdlisa']
+    print(f'Station codes_bdlisa: {codes_bdlisa}')
+    matching = [f['properties'][code_field] for f in bdlisa['features']
+                if codes_bdlisa and codes_bdlisa.startswith(f['properties'][code_field])]
+    print(f'  → BDLISA N2 match: {matching[:3]}')
+"
+```
+Expected : Chaque `codes_bdlisa` de station commence par un code BDLISA N2 (préfixe court).
+
+**Step 6 : Commit**
+```bash
+git add frontend/public/geo/bdlisa.geojson frontend/public/geo/bassins.geojson
+git commit -m "feat: add BDLISA N2 and SANDRE district GeoJSON for hydrogeological layers"
+```
+
+---
+
+### Task 11 : ObservatoryPage — toggles BDLISA/SANDRE + filtrage client-side
+
+**Context:** Ajouter les toggles "Nappes" et "Bassins" dans l'UI, étendre `filteredFeatures` pour filtrer par BDLISA et par district, et passer les nouveaux props à `ObservatoryMap`.
+
+**Files:**
+- Modify: `frontend/src/pages/ObservatoryPage.tsx`
+
+**Step 1 : Lire le fichier actuel**
+
+**Step 2 : Ajouter les constantes de mapping SANDRE**
+
+Ajouter en tête du fichier (avant le composant) :
+```typescript
+// Mapping premier caractère de code_cours_eau → code district SANDRE (CdBH ou équivalent)
+// Vérifier après download de bassins.geojson que les codes correspondent
+const COURS_EAU_TO_DISTRICT: Record<string, string> = {
+  'A': '01',                            // Artois-Picardie
+  'B': '03', 'C': '03',                // Seine-Normandie
+  'D': '02', 'E': '02',                // Rhin-Meuse
+  'F': '04', 'G': '04', 'H': '04',    // Loire-Bretagne
+  'I': '05', 'J': '05', 'K': '05',    // Adour-Garonne
+  'O': '06', 'P': '06', 'Q': '06', 'R': '06', // Rhône-Méditerranée
+  'Y': '07',                            // Corse
+}
+```
+
+> **Note :** Vérifier ces codes contre le fichier `bassins.geojson` téléchargé (Task 10) et ajuster si nécessaire.
+
+**Step 3 : Ajouter les états de toggle**
+
+Après les états existants (`showPiezo`, `showHydro`, `showERA5`) :
+```typescript
+const [showBdlisa, setShowBdlisa] = useState(false)
+const [showSandre, setShowSandre] = useState(false)
+```
+
+**Step 4 : Étendre `filteredFeatures` avec le filtrage BDLISA et bassin**
+
+Modifier le `useMemo` de `filteredFeatures` :
+```typescript
+const filteredFeatures = useMemo<StationGeoJSONFeature[]>(() => {
+  const all = geojsonData?.features ?? []
+  return all.filter(f => {
+    if (filters.codeDepartement && f.properties.code_departement !== filters.codeDepartement) return false
+    if (filters.classification?.length && !filters.classification.includes(f.properties.classification ?? '')) return false
+    if (filters.codeBdlisa && f.properties.type === 'piezo') {
+      const codes = f.properties.codes_bdlisa ?? ''
+      if (!codes.startsWith(filters.codeBdlisa)) return false
+    }
+    if (filters.codeBassin && f.properties.type === 'hydro') {
+      const letter = f.properties.code_district ?? ''
+      if (COURS_EAU_TO_DISTRICT[letter] !== filters.codeBassin) return false
+    }
+    return true
+  })
+}, [geojsonData, filters.codeDepartement, filters.classification, filters.codeBdlisa, filters.codeBassin])
+```
+
+**Step 5 : Ajouter les handlers**
+
+```typescript
+const handleBdlisaClick = useCallback((code: string | null) => {
+  setFilter('bdlisa', code ?? undefined)
+}, [setFilter])
+
+const handleBassinClick = useCallback((code: string | null) => {
+  setFilter('bassin', code ?? undefined)
+}, [setFilter])
+```
+
+**Step 6 : Ajouter les boutons toggle dans l'UI**
+
+Trouver le groupe de toggles existant (Piézométrie / Hydrométrie / ERA5) et ajouter :
+```tsx
+<button
+  onClick={() => setShowBdlisa(v => !v)}
+  aria-pressed={showBdlisa}
+  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
+    showBdlisa
+      ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400'
+      : 'bg-bg-card/80 border-white/10 text-text-secondary hover:text-text-primary'
+  }`}
+>
+  <div className="w-2 h-2 rounded-full bg-emerald-400" />
+  Nappes
+</button>
+
+<button
+  onClick={() => setShowSandre(v => !v)}
+  aria-pressed={showSandre}
+  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
+    showSandre
+      ? 'bg-blue-500/20 border-blue-500/50 text-blue-400'
+      : 'bg-bg-card/80 border-white/10 text-text-secondary hover:text-text-primary'
+  }`}
+>
+  <div className="w-2 h-2 rounded-full bg-blue-400" />
+  Bassins
+</button>
+```
+
+**Step 7 : Passer les nouveaux props à `ObservatoryMap`**
+
+```tsx
+<ObservatoryMap
+  features={filteredFeatures}
+  showPiezo={showPiezo}
+  showHydro={showHydro}
+  onStationClick={handleStationClick}
+  onDeptClick={handleDeptClick}
+  activeCodeDepartement={filters.codeDepartement}
+  showBdlisa={showBdlisa}
+  showSandre={showSandre}
+  onBdlisaClick={handleBdlisaClick}
+  onBassinClick={handleBassinClick}
+  activeCodeBdlisa={filters.codeBdlisa}
+  activeCodeBassin={filters.codeBassin}
+  era5Data={era5Data}
+  era5Variable={era5Variable}
+  showERA5={showERA5}
+/>
+```
+
+**Step 8 : Vérifier TypeScript**
+```bash
+cd /e/hydro_dashboard/frontend && npx tsc --noEmit 2>&1 | head -30
+```
+Des erreurs TypeScript sur les props inconnues de ObservatoryMap sont attendues — elles seront résolues en Task 12.
+
+**Step 9 : Commit**
+```bash
+git add frontend/src/pages/ObservatoryPage.tsx
+git commit -m "feat: add BDLISA/SANDRE toggles and client-side filtering in ObservatoryPage"
+```
+
+---
+
+### Task 12 : Couches BDLISA + SANDRE dans ObservatoryMap
+
+**Context:** Ajouter les layers MapLibre pour les nappes BDLISA (filtrage piézo) et les bassins SANDRE (filtrage hydro). Les layers sont visibles uniquement quand les toggles correspondants sont activés.
+
+**Files:**
+- Modify: `frontend/src/components/map/ObservatoryMap.tsx`
+
+**Step 1 : Lire le fichier actuel**
+
+**Step 2 : Étendre l'interface Props**
+
+Ajouter aux props existantes :
+```typescript
+interface Props {
+  // ... props existantes ...
+  showBdlisa?: boolean
+  showSandre?: boolean
+  onBdlisaClick?: (code: string | null) => void
+  onBassinClick?: (code: string | null) => void
+  activeCodeBdlisa?: string
+  activeCodeBassin?: string
+}
+```
+
+Et dans la déstructuration de la fonction :
+```typescript
+export function ObservatoryMap({
+  // ... props existantes ...
+  showBdlisa = false,
+  showSandre = false,
+  onBdlisaClick,
+  onBassinClick,
+  activeCodeBdlisa,
+  activeCodeBassin,
+}: Props) {
+```
+
+**Step 3 : Ajouter les refs pour les nouveaux callbacks**
+
+```typescript
+const onBdlisaClickRef = useRef(onBdlisaClick)
+onBdlisaClickRef.current = onBdlisaClick
+
+const onBassinClickRef = useRef(onBassinClick)
+onBassinClickRef.current = onBassinClick
+
+const activeCodeBdlisaRef = useRef(activeCodeBdlisa)
+activeCodeBdlisaRef.current = activeCodeBdlisa
+
+const activeCodeBassinRef = useRef(activeCodeBassin)
+activeCodeBassinRef.current = activeCodeBassin
+```
+
+**Step 4 : Ajouter les constantes de couleur BDLISA**
+
+Ajouter avant le composant (niveau fichier) :
+```typescript
+// Couleurs par type de nappe — ajuster selon les valeurs réelles de NatureUH dans bdlisa.geojson
+const BDLISA_NATURE_COLORS: Record<string, string> = {
+  'Domaine sédimentaire': '#22d3ee',   // cyan
+  'Socle': '#a78bfa',                  // violet
+  'Karstique': '#34d399',              // vert
+  'Alluvions': '#60a5fa',              // bleu
+  'Volcanique': '#f97316',             // orange
+  'default': '#94a3b8',               // gris
+}
+
+const SANDRE_DISTRICT_COLORS: Record<string, string> = {
+  '01': '#f59e0b', // Artois-Picardie — ambre
+  '02': '#f97316', // Rhin-Meuse — orange
+  '03': '#3b82f6', // Seine-Normandie — bleu
+  '04': '#22c55e', // Loire-Bretagne — vert
+  '05': '#ef4444', // Adour-Garonne — rouge
+  '06': '#8b5cf6', // Rhône-Méditerranée — violet
+  '07': '#ec4899', // Corse — rose
+}
+```
+
+> **Note :** Les clés des couleurs BDLISA doivent correspondre aux valeurs réelles du champ nature dans `bdlisa.geojson` (Task 10 Step 4). Adapter si nécessaire.
+
+**Step 5 : Ajouter le chargement des layers BDLISA dans `map.on('load', ...)`**
+
+Ajouter AVANT `addClusteredSource('piezo-stations', ...)` et APRÈS les layers depts :
+
+```typescript
+// --- BDLISA nappes ---
+fetch('/geo/bdlisa.geojson')
+  .then(r => r.json())
+  .then(data => {
+    if (map.getSource('bdlisa')) return
+    // Détecter les noms de propriétés (adapter si nécessaire après Task 10)
+    const codeProp = 'code'   // TODO: vérifier le nom exact de la propriété code
+    const nomProp = 'nom'     // TODO: vérifier le nom exact de la propriété nom
+    const natureProp = 'nature' // TODO: vérifier le nom exact (NatureUH, NATURE, etc.)
+
+    map.addSource('bdlisa', { type: 'geojson', data, generateId: true })
+
+    // Couleur dynamique par nature de nappe
+    const colorExpr: maplibregl.ExpressionSpecification = [
+      'match',
+      ['get', natureProp],
+      ...Object.entries(BDLISA_NATURE_COLORS).flatMap(([k, v]) => k === 'default' ? [] : [k, v]),
+      BDLISA_NATURE_COLORS['default'],
+    ]
+
+    map.addLayer({
+      id: 'bdlisa-fill',
+      type: 'fill',
+      source: 'bdlisa',
+      layout: { visibility: 'none' },
+      paint: {
+        'fill-color': colorExpr,
+        'fill-opacity': [
+          'case',
+          ['==', ['get', codeProp], activeCodeBdlisaRef.current ?? '$$NONE$$'], 0.35,
+          ['boolean', ['feature-state', 'hover'], false], 0.20,
+          0.10,
+        ],
+      },
+    })
+    map.addLayer({
+      id: 'bdlisa-line',
+      type: 'line',
+      source: 'bdlisa',
+      layout: { visibility: 'none' },
+      paint: {
+        'line-color': 'rgba(255,255,255,0.3)',
+        'line-width': 0.8,
+      },
+    })
+
+    // Hover BDLISA
+    let hoveredBdlisaId: number | null = null
+    map.on('mousemove', 'bdlisa-fill', (e) => {
+      if (!e.features?.length) return
+      const feat = e.features[0]
+      if (hoveredBdlisaId !== null) map.setFeatureState({ source: 'bdlisa', id: hoveredBdlisaId }, { hover: false })
+      hoveredBdlisaId = feat.id as number
+      map.setFeatureState({ source: 'bdlisa', id: hoveredBdlisaId }, { hover: true })
+      const nom = feat.properties?.[nomProp] ?? ''
+      const nature = feat.properties?.[natureProp] ?? ''
+      setTooltip({ name: `${nom}${nature ? ` · ${nature}` : ''}`, x: e.point.x, y: e.point.y })
+    })
+    map.on('mouseleave', 'bdlisa-fill', () => {
+      if (hoveredBdlisaId !== null) map.setFeatureState({ source: 'bdlisa', id: hoveredBdlisaId }, { hover: false })
+      hoveredBdlisaId = null
+      setTooltip(null)
+    })
+
+    // Clic BDLISA → filter piézo ou désélect
+    map.on('click', 'bdlisa-fill', (e) => {
+      const code = e.features?.[0]?.properties?.[codeProp] ?? null
+      const current = activeCodeBdlisaRef.current
+      onBdlisaClickRef.current?.(code === current ? null : code)
+    })
+
+    map.on('mouseenter', 'bdlisa-fill', () => { map.getCanvas().style.cursor = 'pointer' })
+    map.on('mouseleave', 'bdlisa-fill', () => { map.getCanvas().style.cursor = '' })
+  })
+
+// --- SANDRE bassins hydrographiques ---
+fetch('/geo/bassins.geojson')
+  .then(r => r.json())
+  .then(data => {
+    if (map.getSource('bassins')) return
+    // Détecter les noms de propriétés (adapter après Task 10)
+    const cdBH = 'CdBH'   // TODO: vérifier le nom exact (CdBH, code, CODE_BH, etc.)
+    const lbBH = 'LbBH'   // TODO: vérifier le nom exact (LbBH, nom, NOM_BH, etc.)
+
+    map.addSource('bassins', { type: 'geojson', data, generateId: true })
+
+    const districtColorExpr: maplibregl.ExpressionSpecification = [
+      'match',
+      ['get', cdBH],
+      ...Object.entries(SANDRE_DISTRICT_COLORS).flatMap(([k, v]) => [k, v]),
+      '#94a3b8',
+    ]
+
+    map.addLayer({
+      id: 'bassins-fill',
+      type: 'fill',
+      source: 'bassins',
+      layout: { visibility: 'none' },
+      paint: {
+        'fill-color': districtColorExpr,
+        'fill-opacity': [
+          'case',
+          ['==', ['get', cdBH], activeCodeBassinRef.current ?? '$$NONE$$'], 0.30,
+          ['boolean', ['feature-state', 'hover'], false], 0.18,
+          0.08,
+        ],
+      },
+    })
+    map.addLayer({
+      id: 'bassins-line',
+      type: 'line',
+      source: 'bassins',
+      layout: { visibility: 'none' },
+      paint: {
+        'line-color': districtColorExpr,
+        'line-width': 1.5,
+        'line-opacity': 0.6,
+      },
+    })
+
+    // Hover bassins
+    let hoveredBassinId: number | null = null
+    map.on('mousemove', 'bassins-fill', (e) => {
+      if (!e.features?.length) return
+      const feat = e.features[0]
+      if (hoveredBassinId !== null) map.setFeatureState({ source: 'bassins', id: hoveredBassinId }, { hover: false })
+      hoveredBassinId = feat.id as number
+      map.setFeatureState({ source: 'bassins', id: hoveredBassinId }, { hover: true })
+      setTooltip({ name: feat.properties?.[lbBH] ?? feat.properties?.[cdBH] ?? '', x: e.point.x, y: e.point.y })
+    })
+    map.on('mouseleave', 'bassins-fill', () => {
+      if (hoveredBassinId !== null) map.setFeatureState({ source: 'bassins', id: hoveredBassinId }, { hover: false })
+      hoveredBassinId = null
+      setTooltip(null)
+    })
+
+    // Clic bassin → filter hydro ou désélect
+    map.on('click', 'bassins-fill', (e) => {
+      const code = e.features?.[0]?.properties?.[cdBH] ?? null
+      const current = activeCodeBassinRef.current
+      onBassinClickRef.current?.(code === current ? null : code)
+    })
+
+    map.on('mouseenter', 'bassins-fill', () => { map.getCanvas().style.cursor = 'pointer' })
+    map.on('mouseleave', 'bassins-fill', () => { map.getCanvas().style.cursor = '' })
+  })
+```
+
+**Step 6 : Ajouter les `useEffect` pour show/hide BDLISA et SANDRE**
+
+```typescript
+useEffect(() => {
+  if (!mapRef.current || !mapLoadedRef.current) return
+  const map = mapRef.current
+  const visibility = showBdlisa ? 'visible' : 'none'
+  if (map.getLayer('bdlisa-fill')) map.setLayoutProperty('bdlisa-fill', 'visibility', visibility)
+  if (map.getLayer('bdlisa-line')) map.setLayoutProperty('bdlisa-line', 'visibility', visibility)
+}, [showBdlisa])
+
+useEffect(() => {
+  if (!mapRef.current || !mapLoadedRef.current) return
+  const map = mapRef.current
+  const visibility = showSandre ? 'visible' : 'none'
+  if (map.getLayer('bassins-fill')) map.setLayoutProperty('bassins-fill', 'visibility', visibility)
+  if (map.getLayer('bassins-line')) map.setLayoutProperty('bassins-line', 'visibility', visibility)
+}, [showSandre])
+```
+
+**Step 7 : Ajouter les `useEffect` pour mettre à jour l'highlight actif**
+
+```typescript
+useEffect(() => {
+  activeCodeBdlisaRef.current = activeCodeBdlisa
+  if (!mapRef.current || !mapLoadedRef.current) return
+  const map = mapRef.current
+  if (!map.getLayer('bdlisa-fill')) return
+  map.setPaintProperty('bdlisa-fill', 'fill-opacity', [
+    'case',
+    ['==', ['get', 'code'], activeCodeBdlisa ?? '$$NONE$$'], 0.35,
+    ['boolean', ['feature-state', 'hover'], false], 0.20,
+    0.10,
+  ])
+}, [activeCodeBdlisa])
+
+useEffect(() => {
+  activeCodeBassinRef.current = activeCodeBassin
+  if (!mapRef.current || !mapLoadedRef.current) return
+  const map = mapRef.current
+  if (!map.getLayer('bassins-fill')) return
+  map.setPaintProperty('bassins-fill', 'fill-opacity', [
+    'case',
+    ['==', ['get', 'CdBH'], activeCodeBassin ?? '$$NONE$$'], 0.30,  // adapter nom prop si nécessaire
+    ['boolean', ['feature-state', 'hover'], false], 0.18,
+    0.08,
+  ])
+}, [activeCodeBassin])
+```
+
+**Step 8 : Vérifier TypeScript**
+```bash
+cd /e/hydro_dashboard/frontend && npx tsc --noEmit 2>&1 | head -30
+```
+
+**Step 9 : Tester dans le navigateur**
+
+1. Cliquer le bouton "Nappes" → les polygones BDLISA apparaissent en couleurs
+2. Hover sur une nappe → tooltip avec le nom de l'aquifère
+3. Clic sur une nappe → les stations piézo se filtrent à cette nappe, le polygone se met en évidence
+4. Clic sur la même nappe → désélectionne
+5. Cliquer "Bassins" → les polygones SANDRE apparaissent en couleurs par district
+6. Clic sur un bassin → les hydros se filtrent au district correspondant
+7. Les deux layers peuvent être actifs simultanément
+
+**Step 10 : Commit**
+```bash
+git add frontend/src/components/map/ObservatoryMap.tsx
+git commit -m "feat: add BDLISA aquifer and SANDRE district layers with hover and click-to-filter"
+```
+
+---
+
+### Task 13 : Info hydrogéologique dans StationPopup + StationPage piézo
+
+**Context:** Charger `bdlisa.geojson` une fois via React Query et exposer un hook de lookup. Afficher la nappe correspondante dans le popup de station piézo et dans la page détail piézo.
+
+**Files:**
+- Modify: `frontend/src/hooks/useStations.ts`
+- Modify: `frontend/src/components/map/StationPopup.tsx`
+- Modify: `frontend/src/pages/StationPage.tsx` (section piézo uniquement)
+
+**Step 1 : Ajouter `useBdlisaLookup` dans `useStations.ts`**
+
+```typescript
+// Charge le GeoJSON BDLISA N2 une seule fois (staleTime: Infinity)
+// Retourne une fonction de lookup qui prend un codes_bdlisa de station et retourne les props BDLISA N2
+export function useBdlisaLookup() {
+  const { data } = useQuery({
+    queryKey: ['bdlisa-geojson'],
+    queryFn: () => fetch('/geo/bdlisa.geojson').then(r => r.json() as Promise<{ features: any[] }>),
+    staleTime: Infinity,
+  })
+
+  const lookup = useCallback((codesBdlisa: string | null | undefined): { nom: string; nature: string } | null => {
+    if (!codesBdlisa || !data?.features?.length) return null
+    // codes_bdlisa peut être un seul code ou plusieurs séparés par des virgules
+    const codes = codesBdlisa.split(',').map(s => s.trim()).filter(Boolean)
+    for (const code of codes) {
+      // Chercher la feature BDLISA N2 dont le code est un préfixe du code station
+      const feat = data.features.find(f => {
+        const fCode: string = f.properties?.code ?? f.properties?.Code ?? ''
+        return fCode && code.startsWith(fCode) && fCode.length >= 3
+      })
+      if (feat) {
+        const nom: string = feat.properties?.nom ?? feat.properties?.Nom ?? feat.properties?.NOM ?? ''
+        const nature: string = feat.properties?.nature ?? feat.properties?.NatureUH ?? feat.properties?.NATURE ?? ''
+        return { nom, nature }
+      }
+    }
+    return null
+  }, [data])
+
+  return lookup
+}
+```
+
+> **Note :** Les noms de propriétés (`code`, `nom`, `nature`) doivent correspondre à ceux trouvés en Task 10. Adapter si nécessaire.
+
+**Step 2 : Importer et utiliser `useBdlisaLookup` dans `StationPopup.tsx`**
+
+Dans le composant `StationPopup` :
+```typescript
+import { usePiezoStationDetail, useHydroStationDetail, useBdlisaLookup } from '../../hooks/useStations'
+
+export function StationPopup({ code, type, onClose }: Props) {
+  const isPiezo = type === 'piezo'
+  const { data: station, isLoading } = isPiezo
+    ? usePiezoStationDetail(code)
+    : useHydroStationDetail(code)
+  const bdlisaLookup = useBdlisaLookup()
+
+  if (isLoading || !station) return <PopupSkeleton onClose={onClose} />
+
+  // ... code existant ...
+
+  const bdlisa = isPiezo ? bdlisaLookup((station as any).codes_bdlisa) : null
+
+  return (
+    // ... JSX existant ...
+    // Ajouter APRÈS le bloc percentile, AVANT le lien "Voir les détails" :
+    {bdlisa && (
+      <div className="mt-1 pt-2 border-t border-white/10 text-xs text-gray-400">
+        <p className="flex items-center gap-1">
+          <span className="text-gray-500">Nappe :</span>
+          <span className="text-gray-200">{bdlisa.nom}</span>
+        </p>
+        {bdlisa.nature && (
+          <p className="flex items-center gap-1 mt-0.5">
+            <span className="text-gray-500">Type :</span>
+            <span className="text-gray-200">{bdlisa.nature}</span>
+          </p>
+        )}
+      </div>
+    )}
+    // ...
+  )
+}
+```
+
+**Step 3 : Lire la section piézo de `StationPage.tsx`**
+
+Lire `frontend/src/pages/StationPage.tsx` pour trouver la section piézo et l'endroit où ajouter le bloc hydrogéologique.
+
+**Step 4 : Ajouter une section Hydrogéologie dans `StationPage.tsx` (piézo)**
+
+Dans la page de détail piézo, après la section métadonnées existantes (département, commune, altimétrie) et avant les graphiques :
+
+```tsx
+// Importer le hook en tête du fichier
+import { useBdlisaLookup } from '../hooks/useStations'
+
+// Dans le composant, section piézo
+const bdlisaLookup = useBdlisaLookup()
+const bdlisaInfo = type === 'piezo' && station
+  ? bdlisaLookup((station as PiezoStation).codes_bdlisa)
+  : null
+
+// Dans le JSX, après les méta stations
+{bdlisaInfo && (
+  <div className="bg-bg-card border border-white/10 rounded-xl p-4 mb-4">
+    <h3 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
+      <span className="text-emerald-400">◈</span>
+      Hydrogéologie
+    </h3>
+    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+      <div>
+        <p className="text-xs text-text-secondary">Nappe</p>
+        <p className="text-text-primary font-medium">{bdlisaInfo.nom}</p>
+      </div>
+      {bdlisaInfo.nature && (
+        <div>
+          <p className="text-xs text-text-secondary">Type</p>
+          <p className="text-text-primary font-medium">{bdlisaInfo.nature}</p>
+        </div>
+      )}
+      {(station as PiezoStation).codes_bdlisa && (
+        <div className="col-span-2">
+          <p className="text-xs text-text-secondary">Code BDLISA</p>
+          <p className="text-text-primary font-mono text-xs">{(station as PiezoStation).codes_bdlisa}</p>
+        </div>
+      )}
+    </div>
+  </div>
+)}
+```
+
+**Step 5 : Vérifier TypeScript**
+```bash
+cd /e/hydro_dashboard/frontend && npx tsc --noEmit 2>&1 | head -30
+```
+
+**Step 6 : Tester dans le navigateur**
+
+1. Activer le layer "Nappes"
+2. Cliquer sur une station piézo → le popup affiche le nom de la nappe + son type
+3. Cliquer "Voir les détails" → la page détail piézo affiche la section "Hydrogéologie"
+4. Tester avec une station hydro → aucune info BDLISA ne s'affiche (normal)
+
+**Step 7 : Commit**
+```bash
+git add frontend/src/hooks/useStations.ts \
+        frontend/src/components/map/StationPopup.tsx \
+        frontend/src/pages/StationPage.tsx
+git commit -m "feat: add BDLISA hydrogeological info in StationPopup and StationPage"
+```
+
+---
+
+### Task 14 : Push final
+
+**Step 1 : Vérifier que tout compile**
+```bash
+cd /e/hydro_dashboard/frontend && npx tsc --noEmit
+```
+
+**Step 2 : Vérifier les erreurs console dans le navigateur**
 
 **Step 3 : Push vers GitLab**
 ```bash
