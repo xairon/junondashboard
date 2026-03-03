@@ -398,7 +398,7 @@ export function ObservatoryMap({
                 0.12,
               ],
             },
-          })
+          }, 'piezo-clusters')
           map.addLayer({
             id: 'bdlisa-line',
             type: 'line',
@@ -408,7 +408,7 @@ export function ObservatoryMap({
               'line-color': 'rgba(255,255,255,0.25)',
               'line-width': 0.5,
             },
-          })
+          }, 'piezo-clusters')
 
           let hoveredBdlisaId: number | null = null
           map.on('mousemove', 'bdlisa-fill', (e) => {
@@ -463,7 +463,7 @@ export function ObservatoryMap({
                 0.10,
               ],
             },
-          })
+          }, 'piezo-clusters')
           map.addLayer({
             id: 'bassins-line',
             type: 'line',
@@ -474,7 +474,7 @@ export function ObservatoryMap({
               'line-width': 1.5,
               'line-opacity': 0.5,
             },
-          })
+          }, 'piezo-clusters')
 
           let hoveredBassinId: number | null = null
           map.on('mousemove', 'bassins-fill', (e) => {
