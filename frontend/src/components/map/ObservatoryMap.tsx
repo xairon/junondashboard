@@ -14,17 +14,16 @@ const BDLISA_NATURE_COLORS: Record<string, string> = {
   'INDIFFERENCIE':  '#94a3b8', // gray — undifferentiated
 }
 
-// SANDRE hydrological district colors
+// SANDRE hydrological district colors (CdBH values from bassins.geojson)
 const SANDRE_DISTRICT_COLORS: Record<string, string> = {
   'A':  '#64748b', // Escaut-Somme — slate
-  'B1': '#f97316', // Meuse (Rhin-Meuse 1) — orange
-  'B2': '#fb923c', // Meuse (Rhin-Meuse 2) — light orange
+  'B1': '#f97316', // Meuse — orange
   'C':  '#a78bfa', // Rhin — violet
-  'D':  '#ef4444', // Rhône — red
+  'D':  '#ef4444', // Rhône-Méditerranée — red
   'E':  '#ec4899', // Corse — pink
   'F':  '#22c55e', // Adour-Garonne — green
-  'G':  '#eab308', // Loire — yellow
-  'H':  '#3b82f6', // Seine — blue
+  'G':  '#eab308', // Loire-Bretagne — yellow
+  'H':  '#3b82f6', // Seine-Normandie — blue
 }
 
 interface Props {
@@ -543,6 +542,23 @@ export function ObservatoryMap({
       pointerLayers.forEach((layer) => {
         map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer' })
         map.on('mouseleave', layer, () => { map.getCanvas().style.cursor = '' })
+      })
+
+      // --- Click on empty background → clear all spatial filters ---
+      // Layer-specific handlers (depts-fill, bassins-fill, etc.) fire for their own clicks.
+      // This general handler clears spatial filters when clicking on empty map background
+      // (no features from any of our interactive layers at the clicked point).
+      map.on('click', (e) => {
+        const spatialLayers = ['depts-fill', 'regions-fill', 'bdlisa-fill', 'bassins-fill']
+        const stationLayers = ['piezo-clusters', 'piezo-unclustered', 'hydro-clusters', 'hydro-unclustered']
+        const allInteractive = [...spatialLayers, ...stationLayers].filter(id => !!map.getLayer(id))
+        const hits = map.queryRenderedFeatures(e.point, { layers: allInteractive })
+        if (hits.length === 0) {
+          // True empty click — clear all spatial filters
+          onDeptClickRef.current?.(null)
+          onBdlisaClickRef.current?.(null)
+          onBassinClickRef.current?.(null)
+        }
       })
     })
 

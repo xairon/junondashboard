@@ -178,7 +178,6 @@ export default function ObservatoryPage() {
             {([
               { label: 'Régions', state: showRegions, setState: setShowRegions },
               { label: 'Départements', state: showDepts, setState: setShowDepts },
-              { label: 'Nappes (BDLISA)', state: showBdlisa, setState: setShowBdlisa },
               { label: 'Bassins (SANDRE)', state: showSandre, setState: setShowSandre },
             ] as const).map(({ label, state, setState }) => (
               <label key={label} className="flex items-center gap-2 py-1 cursor-pointer group">
