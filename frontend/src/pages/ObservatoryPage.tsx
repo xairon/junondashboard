@@ -8,16 +8,52 @@ import { useStationsGeoJSON } from '../hooks/useStations'
 import type { StationGeoJSONFeature } from '../lib/types'
 import { useFilters } from '../hooks/useFilters'
 
-// Simplified direct mapping: code_district (first char of code_cours_eau) -> CdBH
-// Only handles direct letter matches (A,C,D,E,F,G,H); B->B1/B2 handled by startsWith
-// Stations with unmapped code_district letters (I,J,K,L,...,Y) are not filtered out
-function matchesBassin(codeDistrict: string | null | undefined, codeBassin: string): boolean {
+// Mapping: first char of code_cours_eau (Carthage system) → DCE district CdBH
+// Carthage letters ≠ DCE letters — verified against gold.dim_hydro_stations data.
+// A→Rhine (Moselle, Ill…), B→Meuse, D+E→Escaut-Somme, F+G+H+I→Seine-Normandie,
+// J+K+L+M+N→Loire-Bretagne, O+P+Q+R+S→Adour-Garonne, U+V+W+X+Y→Rhône-Méditerranée
+// Exception: Y rivers in depts 2A/2B are Corse (DCE E), not Rhône-Méditerranée.
+const CARTHAGE_TO_DCE: Record<string, string> = {
+  A: 'C', // Rhin (Moselle, Ill, Fecht…)
+  B: 'B', // Meuse (→ B1 or B2)
+  D: 'A', // Escaut-Somme (Sambre, Helpe…)
+  E: 'A', // Escaut-Somme (Aa, Lys, Escaut, Somme…)
+  F: 'H', // Seine-Normandie (Marne, Yerres…)
+  G: 'H', // Seine-Normandie (côtiers normands: Saane…)
+  H: 'H', // Seine-Normandie (Oise, Aisne, Risle…)
+  I: 'H', // Seine-Normandie (Orne, Dives, Douve…)
+  J: 'G', // Loire-Bretagne (côtiers bretons)
+  K: 'G', // Loire-Bretagne (Allier, Indre, Cher…)
+  L: 'G', // Loire-Bretagne (Thouet, Creuse…)
+  M: 'G', // Loire-Bretagne (Mayenne, Sarthe…)
+  N: 'G', // Loire-Bretagne (côtiers Vendée/Deux-Sèvres)
+  O: 'F', // Adour-Garonne (Garonne, Tarn, Aveyron…)
+  P: 'F', // Adour-Garonne (Dordogne, Vézère, Isle…)
+  Q: 'F', // Adour-Garonne (Adour, Gave de Pau…)
+  R: 'F', // Adour-Garonne (Charente, Boutonne…)
+  S: 'F', // Adour-Garonne (côtiers: Seudre, Nivelle…)
+  U: 'D', // Rhône-Méditerranée (Saône: Doubs, Reyssouze…)
+  V: 'D', // Rhône-Méditerranée (Gard, Ardèche, Cèze…)
+  W: 'D', // Rhône-Méditerranée Alpine (Isère, Arc…)
+  X: 'D', // Rhône-Méditerranée SE (Durance, Verdon…)
+  Y: 'D', // Rhône-Méditerranée côtiers + Corse (distingué par dept)
+}
+
+function matchesBassin(
+  codeDistrict: string | null | undefined,
+  codeBassin: string,
+  codeDept?: string | null,
+): boolean {
   if (!codeDistrict) return false
-  // Handle two-char CdBH codes like "B1", "B2" — match by first char
-  if (codeBassin.length === 2 && /[A-Z][0-9]/.test(codeBassin)) {
-    return codeDistrict === codeBassin[0]
-  }
-  return codeDistrict === codeBassin
+  // Corse (DCE E): toutes les stations des depts 2A et 2B
+  if (codeBassin === 'E') return codeDept === '2A' || codeDept === '2B'
+  // Les stations corses n'appartiennent à aucun autre bassin
+  if (codeDept === '2A' || codeDept === '2B') return false
+  const dce = CARTHAGE_TO_DCE[codeDistrict]
+  if (!dce) return false
+  // B1 et B2 (Meuse) mappent tous les deux vers Carthage 'B'
+  if (codeBassin === 'B1' || codeBassin === 'B2') return dce === 'B'
+  return dce === codeBassin
 }
 
 export default function ObservatoryPage() {
@@ -34,7 +70,7 @@ export default function ObservatoryPage() {
         if (!codes.startsWith(filters.codeBdlisa)) return false
       }
       if (filters.codeBassin && f.properties.type === 'hydro') {
-        if (!matchesBassin(f.properties.code_district, filters.codeBassin)) return false
+        if (!matchesBassin(f.properties.code_district, filters.codeBassin, f.properties.code_departement)) return false
       }
       return true
     })
