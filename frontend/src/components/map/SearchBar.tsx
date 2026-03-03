@@ -1,13 +1,13 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { Search, X } from 'lucide-react'
+import type { StationGeoJSONFeature } from '../../lib/types'
 
 interface Props {
-  piezoStations?: any[]
-  hydroStations?: any[]
-  onSelect: (station: any, type: 'piezo' | 'hydro') => void
+  features?: StationGeoJSONFeature[]
+  onSelect: (code: string, type: 'piezo' | 'hydro') => void
 }
 
-export function SearchBar({ piezoStations, hydroStations, onSelect }: Props) {
+export function SearchBar({ features, onSelect }: Props) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [highlightIndex, setHighlightIndex] = useState(-1)
@@ -28,28 +28,16 @@ export function SearchBar({ piezoStations, hydroStations, onSelect }: Props) {
   const results = useMemo(() => {
     if (!query || query.length < 2) return []
     const q = query.toLowerCase()
-    const piezo = (piezoStations ?? [])
-      .filter((s: any) => {
-        const name = (s.nom_commune || s.code_bss || '').toLowerCase()
-        return name.includes(q) || (s.code_bss || '').toLowerCase().includes(q)
+    return (features ?? [])
+      .filter(f => {
+        const name = (f.properties.commune || f.properties.code || '').toLowerCase()
+        return name.includes(q) || f.properties.code.toLowerCase().includes(q)
       })
-      .slice(0, 5)
-      .map((s: any) => ({ ...s, _type: 'piezo' as const }))
+      .slice(0, 10)
+  }, [query, features])
 
-    const hydro = (hydroStations ?? [])
-      .filter((s: any) => {
-        const name = (s.libelle_station || s.code_station || '').toLowerCase()
-        const river = (s.libelle_cours_eau || '').toLowerCase()
-        return name.includes(q) || river.includes(q) || (s.code_station || '').toLowerCase().includes(q)
-      })
-      .slice(0, 5)
-      .map((s: any) => ({ ...s, _type: 'hydro' as const }))
-
-    return [...piezo, ...hydro]
-  }, [query, piezoStations, hydroStations])
-
-  const selectItem = useCallback((s: any) => {
-    onSelect(s, s._type)
+  const selectItem = useCallback((f: StationGeoJSONFeature) => {
+    onSelect(f.properties.code, f.properties.type)
     setQuery('')
     setOpen(false)
     setHighlightIndex(-1)
@@ -109,26 +97,30 @@ export function SearchBar({ piezoStations, hydroStations, onSelect }: Props) {
           role="listbox"
           className="mt-1 bg-bg-card/95 backdrop-blur-md border border-white/10 rounded-lg overflow-hidden shadow-xl max-h-64 overflow-y-auto"
         >
-          {results.map((s: any, i: number) => (
+          {results.map((f, i) => (
             <button
-              key={`${s._type}-${s.code_bss || s.code_station}-${i}`}
+              key={`${f.properties.type}-${f.properties.code}-${i}`}
               role="option"
               aria-selected={i === highlightIndex}
-              onClick={() => selectItem(s)}
+              onClick={() => selectItem(f)}
               className={`w-full text-left px-3 py-2 transition-colors border-b border-white/5 last:border-0 ${
                 i === highlightIndex ? 'bg-bg-hover' : 'hover:bg-bg-hover'
               }`}
             >
               <div className="flex items-center gap-2">
-                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${s._type === 'piezo' ? 'bg-accent-cyan/20 text-accent-cyan' : 'bg-accent-indigo/20 text-accent-indigo'}`}>
-                  {s._type === 'piezo' ? 'PIEZO' : 'HYDRO'}
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                  f.properties.type === 'piezo'
+                    ? 'bg-accent-cyan/20 text-accent-cyan'
+                    : 'bg-accent-indigo/20 text-accent-indigo'
+                }`}>
+                  {f.properties.type === 'piezo' ? 'PIEZO' : 'HYDRO'}
                 </span>
                 <span className="text-sm text-text-primary truncate">
-                  {s._type === 'piezo' ? (s.nom_commune || s.code_bss) : (s.libelle_station || s.code_station)}
+                  {f.properties.commune || f.properties.code}
                 </span>
               </div>
               <p className="text-xs text-text-secondary mt-0.5 ml-14">
-                {s.nom_departement || ''} &middot; {s.code_bss || s.code_station}
+                {f.properties.departement || ''} &middot; {f.properties.code}
               </p>
             </button>
           ))}
