@@ -2,17 +2,18 @@ import { useRef, useEffect, useCallback, useMemo } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { CLASSIFICATION_COLORS, CLASSIFICATION_LABELS } from '../../lib/constants'
+import type { StationGeoJSONFeature } from '../../lib/types'
 
 const FRANCE_CENTER: [number, number] = [2.5, 46.5]
 const FRANCE_ZOOM = 5.5
 const DEFAULT_COLOR = '#6b7280'
 
 interface Props {
-  piezoStations?: any[]
-  hydroStations?: any[]
+  features?: StationGeoJSONFeature[]
   showPiezo?: boolean
   showHydro?: boolean
-  onStationClick?: (station: any, type: 'piezo' | 'hydro') => void
+  onStationClick?: (code: string, type: 'piezo' | 'hydro') => void
+  onDeptClick?: (code: string | null) => void
   era5Data?: any[]
   era5Variable?: 'total_precipitation' | 'temperature_2m'
   showERA5?: boolean
@@ -68,20 +69,17 @@ function MapLegend({
 /* ------------------------------------------------------------------ */
 /*  GeoJSON helpers                                                   */
 /* ------------------------------------------------------------------ */
-function stationsToGeoJSON(stations: any[], classificationKey: string, codeKey: string) {
+function featuresToGeoJSON(features: StationGeoJSONFeature[]) {
   return {
     type: 'FeatureCollection' as const,
-    features: stations
-      .filter((s) => s.longitude != null && s.latitude != null)
-      .map((s, i) => ({
+    features: features
+      .filter(f => f.geometry.coordinates[0] != null && f.geometry.coordinates[1] != null)
+      .map(f => ({
         type: 'Feature' as const,
-        geometry: {
-          type: 'Point' as const,
-          coordinates: [s.longitude, s.latitude],
-        },
+        geometry: f.geometry,
         properties: {
-          code: s[codeKey] ?? String(i),
-          classification: s[classificationKey] ?? 'UNKNOWN',
+          code: f.properties.code,
+          classification: f.properties.classification ?? 'UNKNOWN',
         },
       })),
   }
@@ -231,11 +229,11 @@ function era5ToGeoJSON(data: any[], variable: string) {
 /*  Main component                                                    */
 /* ------------------------------------------------------------------ */
 export function ObservatoryMap({
-  piezoStations,
-  hydroStations,
+  features,
   showPiezo = true,
   showHydro = true,
   onStationClick,
+  onDeptClick,
   era5Data,
   era5Variable = 'total_precipitation',
   showERA5 = false,
@@ -243,34 +241,20 @@ export function ObservatoryMap({
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const mapLoadedRef = useRef(false)
-  const piezoDataRef = useRef<any[]>()
-  const hydroDataRef = useRef<any[]>()
+
+  const featuresRef = useRef<StationGeoJSONFeature[]>([])
+  featuresRef.current = features ?? []
+
   const onStationClickRef = useRef(onStationClick)
   onStationClickRef.current = onStationClick
 
-  piezoDataRef.current = piezoStations
-  hydroDataRef.current = hydroStations
+  const onDeptClickRef = useRef(onDeptClick)
+  onDeptClickRef.current = onDeptClick
 
-  // HashMap refs for O(1) click lookup
-  const piezoMapRef = useRef<Map<string, any>>(new Map())
-  const hydroMapRef = useRef<Map<string, any>>(new Map())
-
-  useEffect(() => {
-    if (piezoStations) {
-      piezoMapRef.current = new Map(piezoStations.map((s: any) => [s.code_bss, s]))
-    }
-  }, [piezoStations])
-
-  useEffect(() => {
-    if (hydroStations) {
-      hydroMapRef.current = new Map(hydroStations.map((s: any) => [s.code_station, s]))
-    }
-  }, [hydroStations])
-
-  const updateSource = useCallback((map: maplibregl.Map, sourceId: string, stations: any[] | undefined, classificationKey: string, codeKey: string) => {
+  const updateSource = useCallback((map: maplibregl.Map, sourceId: string, feats: StationGeoJSONFeature[]) => {
     const source = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined
     if (source) {
-      source.setData(stations?.length ? stationsToGeoJSON(stations, classificationKey, codeKey) as any : { type: 'FeatureCollection', features: [] })
+      source.setData(feats.length ? featuresToGeoJSON(feats) as any : { type: 'FeatureCollection', features: [] })
     }
   }, [])
 
@@ -345,12 +329,11 @@ export function ObservatoryMap({
       addClusteredSource(map, 'hydro-stations', 'hydro', 1, 'rgba(255,255,255,0.3)')
 
       // Populate with any data that already loaded
-      if (piezoDataRef.current?.length) {
-        updateSource(map, 'piezo-stations', piezoDataRef.current, 'classification_derniere_annee', 'code_bss')
-      }
-      if (hydroDataRef.current?.length) {
-        updateSource(map, 'hydro-stations', hydroDataRef.current, 'classification_resultat_dern_annee', 'code_station')
-      }
+      const allFeatures = featuresRef.current
+      const piezoFeats = allFeatures.filter(f => f.properties.type === 'piezo')
+      const hydroFeats = allFeatures.filter(f => f.properties.type === 'hydro')
+      if (piezoFeats.length) updateSource(map, 'piezo-stations', piezoFeats)
+      if (hydroFeats.length) updateSource(map, 'hydro-stations', hydroFeats)
 
       // --- Click: expand cluster on click ---
       const handleClusterClick = (sourceId: string) => (e: maplibregl.MapMouseEvent) => {
@@ -370,16 +353,12 @@ export function ObservatoryMap({
 
       // --- Click: individual station ---
       map.on('click', 'piezo-unclustered', (e) => {
-        if (!e.features?.length) return
-        const code = e.features[0].properties?.code
-        const station = piezoMapRef.current.get(code)
-        if (station && onStationClickRef.current) onStationClickRef.current(station, 'piezo')
+        const code = e.features?.[0]?.properties?.code
+        if (code) onStationClickRef.current?.(code, 'piezo')
       })
       map.on('click', 'hydro-unclustered', (e) => {
-        if (!e.features?.length) return
-        const code = e.features[0].properties?.code
-        const station = hydroMapRef.current.get(code)
-        if (station && onStationClickRef.current) onStationClickRef.current(station, 'hydro')
+        const code = e.features?.[0]?.properties?.code
+        if (code) onStationClickRef.current?.(code, 'hydro')
       })
 
       // --- Cursor ---
@@ -399,17 +378,15 @@ export function ObservatoryMap({
     }
   }, [updateSource])
 
-  // Update piezo data
+  // Sync features changes to map sources
   useEffect(() => {
     if (!mapRef.current || !mapLoadedRef.current) return
-    updateSource(mapRef.current, 'piezo-stations', piezoStations, 'classification_derniere_annee', 'code_bss')
-  }, [piezoStations, updateSource])
-
-  // Update hydro data
-  useEffect(() => {
-    if (!mapRef.current || !mapLoadedRef.current) return
-    updateSource(mapRef.current, 'hydro-stations', hydroStations, 'classification_resultat_dern_annee', 'code_station')
-  }, [hydroStations, updateSource])
+    const map = mapRef.current
+    const piezoFeats = (features ?? []).filter(f => f.properties.type === 'piezo')
+    const hydroFeats = (features ?? []).filter(f => f.properties.type === 'hydro')
+    updateSource(map, 'piezo-stations', piezoFeats)
+    updateSource(map, 'hydro-stations', hydroFeats)
+  }, [features, updateSource])
 
   // Toggle visibility
   useEffect(() => {
@@ -445,12 +422,12 @@ export function ObservatoryMap({
   }, [showERA5, era5Data, era5Variable])
 
   const piezoCount = useMemo(
-    () => piezoStations?.filter((s: any) => s.longitude != null && s.latitude != null).length ?? 0,
-    [piezoStations]
+    () => (features ?? []).filter(f => f.properties.type === 'piezo').length,
+    [features]
   )
   const hydroCount = useMemo(
-    () => hydroStations?.filter((s: any) => s.longitude != null && s.latitude != null).length ?? 0,
-    [hydroStations]
+    () => (features ?? []).filter(f => f.properties.type === 'hydro').length,
+    [features]
   )
 
   return (
