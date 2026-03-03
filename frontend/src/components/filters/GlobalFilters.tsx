@@ -18,7 +18,9 @@ export function GlobalFilters({ filters, setFilter, totalCount, filteredCount }:
       filters.minObservations != null ||
       filters.lastMeasurementAfter != null ||
       (filters.classification != null && filters.classification.length > 0) ||
-      filters.codeDepartement != null
+      filters.codeDepartement != null ||
+      filters.codeBdlisa != null ||
+      filters.codeBassin != null
     )
   }, [filters])
 
@@ -27,6 +29,8 @@ export function GlobalFilters({ filters, setFilter, totalCount, filteredCount }:
     setFilter('last_after', undefined)
     setFilter('classif', undefined)
     setFilter('dept', undefined)
+    setFilter('bdlisa', undefined)
+    setFilter('bassin', undefined)
   }
 
   return (

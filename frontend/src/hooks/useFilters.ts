@@ -6,6 +6,8 @@ export interface Filters {
   lastMeasurementAfter?: string
   classification?: string[]
   codeDepartement?: string
+  codeBdlisa?: string    // BDLISA N2 code (e.g. "101AC")
+  codeBassin?: string    // SANDRE district code (e.g. "06")
 }
 
 export function useFilters() {
@@ -16,6 +18,8 @@ export function useFilters() {
     lastMeasurementAfter: searchParams.get('last_after') ?? undefined,
     classification: searchParams.getAll('classif').length > 0 ? searchParams.getAll('classif') : undefined,
     codeDepartement: searchParams.get('dept') ?? undefined,
+    codeBdlisa: searchParams.get('bdlisa') ?? undefined,
+    codeBassin: searchParams.get('bassin') ?? undefined,
   }), [searchParams])
 
   const setFilter = useCallback((key: string, value: string | string[] | undefined) => {

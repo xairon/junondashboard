@@ -216,7 +216,8 @@ async def get_stations_geojson(
                 SELECT code_bss AS code, 'piezo' AS type,
                        latitude, longitude, nom_commune AS commune,
                        code_departement, nom_departement AS departement,
-                       classification_derniere_annee AS classification
+                       classification_derniere_annee AS classification,
+                       codes_bdlisa
                 FROM gold.dim_piezo_stations
                 WHERE latitude IS NOT NULL AND longitude IS NOT NULL
             """
@@ -236,6 +237,7 @@ async def get_stations_geojson(
                         "commune": r["commune"],
                         "departement": r["departement"],
                         "code_departement": r["code_departement"],
+                        "codes_bdlisa": r["codes_bdlisa"],
                     },
                 })
 
@@ -245,7 +247,8 @@ async def get_stations_geojson(
                        latitude_station AS latitude, longitude_station AS longitude,
                        libelle_station AS commune,
                        code_departement, nom_departement AS departement,
-                       classification_resultat_dern_annee AS classification
+                       classification_resultat_dern_annee AS classification,
+                       LEFT(code_cours_eau, 1) AS code_district
                 FROM gold.dim_hydro_stations
                 WHERE latitude_station IS NOT NULL AND longitude_station IS NOT NULL
             """
@@ -265,6 +268,7 @@ async def get_stations_geojson(
                         "commune": r["commune"],
                         "departement": r["departement"],
                         "code_departement": r["code_departement"],
+                        "code_district": r["code_district"],
                     },
                 })
 
