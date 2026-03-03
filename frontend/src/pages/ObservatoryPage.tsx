@@ -34,7 +34,7 @@ export default function ObservatoryPage() {
     queryFn: api.stats.national,
   })
 
-  const [selectedStation, setSelectedStation] = useState<{ station: any; type: 'piezo' | 'hydro' } | null>(null)
+  const [selectedStation, setSelectedStation] = useState<{ code: string; type: 'piezo' | 'hydro' } | null>(null)
   const [showPiezo, setShowPiezo] = useState(true)
   const [showHydro, setShowHydro] = useState(true)
 
@@ -75,7 +75,8 @@ export default function ObservatoryPage() {
   }, [era5Playing])
 
   const handleStationClick = useCallback((station: any, type: 'piezo' | 'hydro') => {
-    setSelectedStation({ station, type })
+    const code = type === 'piezo' ? (station.code_bss ?? '') : (station.code_station ?? '')
+    setSelectedStation({ code, type })
   }, [])
 
   const totalCount = (piezoStations?.length ?? 0) + (hydroStations?.length ?? 0)
@@ -168,7 +169,7 @@ export default function ObservatoryPage() {
 
       {selectedStation && (
         <StationPopup
-          station={selectedStation.station}
+          code={selectedStation.code}
           type={selectedStation.type}
           onClose={() => setSelectedStation(null)}
         />
