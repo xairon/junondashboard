@@ -416,7 +416,7 @@ export function ObservatoryMap({
             if (hoveredBdlisaId !== null) map.setFeatureState({ source: 'bdlisa', id: hoveredBdlisaId }, { hover: false })
             hoveredBdlisaId = feat.id as number
             map.setFeatureState({ source: 'bdlisa', id: hoveredBdlisaId }, { hover: true })
-            const nom = feat.properties?.code ?? ''
+            const nom = feat.properties?.nom ?? feat.properties?.code ?? ''
             const nature = feat.properties?.nature ?? ''
             setTooltip({ name: `${nom}${nature ? ` · ${nature}` : ''}`, x: e.point.x, y: e.point.y })
           })
