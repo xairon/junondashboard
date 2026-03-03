@@ -348,3 +348,34 @@ async def get_piezo_percentiles(
     if data is None:
         raise HTTPException(status_code=404, detail=f"No data for piezo station {code_bss}")
     return data
+
+
+@router.get("/hydro/{code_station}/percentiles", response_model=StationPercentiles)
+async def get_hydro_percentiles(
+    code_station: str,
+    db: AsyncSession = Depends(get_db),
+):
+    r = get_redis()
+    key = cache_key("hydro_percentiles", {"code_station": code_station})
+
+    async def fetch():
+        query = """
+            SELECT
+                PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY resultat_obs_elab) AS p10,
+                PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY resultat_obs_elab) AS p25,
+                PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY resultat_obs_elab) AS p75,
+                PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY resultat_obs_elab) AS p90
+            FROM gold.hydro_daily_chroniques
+            WHERE code_station = :code
+              AND resultat_obs_elab IS NOT NULL
+        """
+        result = await db.execute(text(query), {"code": code_station})
+        row = result.mappings().first()
+        if not row:
+            return None
+        return dict(row)
+
+    data = await cached(r, key, PERCENTILES_TTL, fetch)
+    if data is None:
+        raise HTTPException(status_code=404, detail=f"No data for hydro station {code_station}")
+    return data
