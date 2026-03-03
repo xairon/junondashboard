@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useParams, useLocation, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Info } from 'lucide-react'
-import { usePiezoStationDetail, useHydroStationDetail } from '../hooks/useStations'
+import { usePiezoStationDetail, useHydroStationDetail, useBdlisaLookup } from '../hooks/useStations'
 import { usePiezoMonthly, useHydroMonthly, usePiezoDaily, useHydroDaily, usePiezoYearly, useHydroYearly } from '../hooks/useTimeseries'
 import { StationKPICards } from '../components/station/StationKPICards'
 import { TimeseriesChart } from '../components/charts/TimeseriesChart'
@@ -146,6 +146,7 @@ export default function StationPage() {
   )
 
   const station = isPiezo ? piezoStation : hydroStation
+  const bdlisaLookup = useBdlisaLookup()
   const monthly = isPiezo ? piezoMonthly : hydroMonthly
   const stationLoading = isPiezo ? piezoLoading : hydroLoading
   const type = isPiezo ? 'piezo' as const : 'hydro' as const
@@ -305,6 +306,10 @@ export default function StationPage() {
                         </a>
                       )
                       : null}
+                  />
+                  <MetaRow
+                    label="Type nappe"
+                    value={isPiezo && station ? bdlisaLookup((station as any).codes_bdlisa)?.nature ?? null : null}
                   />
                   <MetaRow
                     label="Niveau min historique"

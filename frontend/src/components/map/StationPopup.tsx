@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { X, ExternalLink, Calendar, Database, Mountain } from 'lucide-react'
 import { ClassificationBadge } from '../station/ClassificationBadge'
 import { formatNumber } from '../../lib/utils'
-import { usePiezoStationDetail, useHydroStationDetail } from '../../hooks/useStations'
+import { usePiezoStationDetail, useHydroStationDetail, useBdlisaLookup } from '../../hooks/useStations'
 
 interface Props {
   code: string
@@ -50,8 +50,11 @@ export function StationPopup({ code, type, onClose }: Props) {
   const piezoQuery = usePiezoStationDetail(isPiezo ? code : '')
   const hydroQuery = useHydroStationDetail(!isPiezo ? code : '')
   const { data: station, isLoading } = isPiezo ? piezoQuery : hydroQuery
+  const bdlisaLookup = useBdlisaLookup()
 
   if (isLoading || !station) return <PopupSkeleton onClose={onClose} />
+
+  const bdlisa = isPiezo ? bdlisaLookup((station as any).codes_bdlisa) : null
 
   const name = isPiezo
     ? ((station as any).nom_commune || (station as any).code_bss)
@@ -130,6 +133,13 @@ export function StationPopup({ code, type, onClose }: Props) {
           </div>
         )}
       </div>
+
+      {bdlisa?.nature && (
+        <div className="mt-2 pt-2 border-t border-white/10 flex items-center gap-2 text-xs text-gray-400">
+          <span className="text-gray-500">Nappe :</span>
+          <span className="text-gray-200">{bdlisa.nature}</span>
+        </div>
+      )}
 
       <Link
         to={`/station/${type}/${stationCode}`}

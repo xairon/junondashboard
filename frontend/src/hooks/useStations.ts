@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
 
@@ -37,4 +38,25 @@ export function useStationsGeoJSON() {
     queryFn: () => api.stations.geojson(),
     staleTime: 3_600_000, // 1h — matches backend Redis TTL
   })
+}
+
+export function useBdlisaLookup() {
+  const { data } = useQuery({
+    queryKey: ['bdlisa-geojson'],
+    queryFn: (): Promise<{ features: Array<{ properties: { code: string; nom: string; nature: string } }> }> =>
+      fetch('/geo/bdlisa.geojson').then(r => r.json()),
+    staleTime: Infinity,
+  })
+
+  const lookup = useCallback((codesBdlisa: string | null | undefined): { nature: string } | null => {
+    if (!codesBdlisa || !data?.features?.length) return null
+    const feat = data.features.find(f => {
+      const fCode = f.properties?.code ?? ''
+      return fCode.length >= 3 && codesBdlisa.startsWith(fCode)
+    })
+    if (!feat) return null
+    return { nature: feat.properties?.nature ?? '' }
+  }, [data])
+
+  return lookup
 }
