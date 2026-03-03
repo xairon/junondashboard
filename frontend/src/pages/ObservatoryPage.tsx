@@ -96,7 +96,7 @@ export default function ObservatoryPage() {
   const [showCalques, setShowCalques] = useState(false)
   const [showRegions, setShowRegions] = useState(false)
   const [showDepts, setShowDepts] = useState(false)
-  const [showBdlisa, setShowBdlisa] = useState(false)
+  const [showHER, setShowHER] = useState(false)
   const [showSandre, setShowSandre] = useState(false)
 
   const { data: era5Dates } = useERA5Dates()
@@ -136,10 +136,6 @@ export default function ObservatoryPage() {
     setFilter('dept', code ?? undefined)
   }, [setFilter])
 
-  const handleBdlisaClick = useCallback((code: string | null) => {
-    setFilter('bdlisa', code ?? undefined)
-  }, [setFilter])
-
   const handleBassinClick = useCallback((code: string | null) => {
     setFilter('bassin', code ?? undefined)
   }, [setFilter])
@@ -166,11 +162,9 @@ export default function ObservatoryPage() {
         activeCodeDepartement={filters.codeDepartement}
         showRegions={showRegions}
         showDepts={showDepts}
-        showBdlisa={showBdlisa}
+        showHER={showHER}
         showSandre={showSandre}
-        onBdlisaClick={handleBdlisaClick}
         onBassinClick={handleBassinClick}
-        activeCodeBdlisa={filters.codeBdlisa}
         activeCodeBassin={filters.codeBassin}
       />
 
@@ -231,7 +225,7 @@ export default function ObservatoryPage() {
             {([
               { label: 'Régions', state: showRegions, setState: setShowRegions },
               { label: 'Départements', state: showDepts, setState: setShowDepts },
-              { label: 'Nappes (BDLISA)', state: showBdlisa, setState: setShowBdlisa },
+              { label: 'Hydroécorégions', state: showHER, setState: setShowHER },
               { label: 'Bassins (SANDRE)', state: showSandre, setState: setShowSandre },
             ] as const).map(({ label, state, setState }) => (
               <label key={label} className="flex items-center gap-2 py-1 cursor-pointer group">
