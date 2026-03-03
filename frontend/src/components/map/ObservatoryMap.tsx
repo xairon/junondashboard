@@ -6,12 +6,30 @@ import type { StationGeoJSONFeature } from '../../lib/types'
 const FRANCE_CENTER: [number, number] = [2.5, 46.5]
 const FRANCE_ZOOM = 5.5
 
-// BDLISA aquifer nature colors
-const BDLISA_NATURE_COLORS: Record<string, string> = {
-  'LIBRE':          '#22d3ee', // cyan — free aquifer
-  'CAPTIF':         '#3b82f6', // blue — confined
-  'MULTICOUCHE':    '#a78bfa', // violet — multilayer
-  'INDIFFERENCIE':  '#94a3b8', // gray — undifferentiated
+// HER-1 hydroecoregion colors (22 regions, grouped by geology/climate)
+const HER1_COLORS: Record<number, string> = {
+  1: '#ef4444',  // Pyrénées
+  2: '#f97316',  // Alpes Internes
+  3: '#eab308',  // Massif Central Sud
+  4: '#84cc16',  // Vosges
+  5: '#22c55e',  // Jura-Préalpes Nord
+  6: '#14b8a6',  // Méditerranéen
+  7: '#06b6d4',  // Préalpes du Sud
+  8: '#3b82f6',  // Cévennes
+  9: '#6366f1',  // Tables Calcaires
+  10: '#8b5cf6', // Côtes Calcaires Est
+  11: '#a855f7', // Causses Aquitains
+  12: '#d946ef', // Armoricain
+  13: '#ec4899', // Landes
+  14: '#f43f5e', // Coteaux Aquitains
+  15: '#fb923c', // Plaine Saône
+  16: '#a78bfa', // Corse
+  17: '#64748b', // Dépressions Sédimentaires
+  18: '#10b981', // Alsace
+  19: '#f59e0b', // Grands Causses
+  20: '#78716c', // Dépôts Argilo-Sableux
+  21: '#be185d', // Massif Central Nord
+  22: '#059669', // Ardennes
 }
 
 // SANDRE hydrological district colors (CdBH values from bassins.geojson)
@@ -35,11 +53,9 @@ interface Props {
   activeCodeDepartement?: string
   showRegions?: boolean
   showDepts?: boolean
-  showBdlisa?: boolean
+  showHER?: boolean
   showSandre?: boolean
-  onBdlisaClick?: (code: string | null) => void
   onBassinClick?: (code: string | null) => void
-  activeCodeBdlisa?: string
   activeCodeBassin?: string
 }
 
@@ -169,11 +185,9 @@ export function ObservatoryMap({
   activeCodeDepartement = undefined,
   showRegions = false,
   showDepts = false,
-  showBdlisa = false,
+  showHER = false,
   showSandre = false,
-  onBdlisaClick,
   onBassinClick,
-  activeCodeBdlisa,
   activeCodeBassin,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -189,15 +203,8 @@ export function ObservatoryMap({
   const onDeptClickRef = useRef(onDeptClick)
   onDeptClickRef.current = onDeptClick
 
-  // Keep refs for Task 12 callbacks (not yet wired to map events, but available)
-  const onBdlisaClickRef = useRef(onBdlisaClick)
-  onBdlisaClickRef.current = onBdlisaClick
-
   const onBassinClickRef = useRef(onBassinClick)
   onBassinClickRef.current = onBassinClick
-
-  const activeCodeBdlisaRef = useRef(activeCodeBdlisa)
-  activeCodeBdlisaRef.current = activeCodeBdlisa
 
   const activeCodeBassinRef = useRef(activeCodeBassin)
   activeCodeBassinRef.current = activeCodeBassin
@@ -369,69 +376,63 @@ export function ObservatoryMap({
           map.on('mouseleave', 'depts-fill', () => { map.getCanvas().style.cursor = '' })
         })
 
-      // --- BDLISA nappes ---
-      fetch('/geo/bdlisa.geojson')
+      // --- Hydroécorégions (HER-2 from SANDRE) ---
+      fetch('/geo/her.geojson')
         .then(r => r.json())
         .then(data => {
-          if (map.getSource('bdlisa')) return
-          map.addSource('bdlisa', { type: 'geojson', data, generateId: true })
+          if (map.getSource('her')) return
+          map.addSource('her', { type: 'geojson', data, generateId: true })
 
-          const bdlisaColorExpr: maplibregl.ExpressionSpecification = [
+          const herColorExpr: maplibregl.ExpressionSpecification = [
             'match',
-            ['get', 'nature'],
-            ...Object.entries(BDLISA_NATURE_COLORS).flatMap(([k, v]) => [k, v] as [string, string]),
+            ['get', 'code_her1'],
+            ...Object.entries(HER1_COLORS).flatMap(([k, v]) => [Number(k), v] as [number, string]),
             '#94a3b8',
           ] as any
 
           map.addLayer({
-            id: 'bdlisa-fill',
+            id: 'her-fill',
             type: 'fill',
-            source: 'bdlisa',
+            source: 'her',
             layout: { visibility: 'none' },
             paint: {
-              'fill-color': bdlisaColorExpr,
+              'fill-color': herColorExpr,
               'fill-opacity': [
                 'case',
-                ['==', ['get', 'code'], activeCodeBdlisaRef.current ?? '$$NONE$$'], 0.40,
-                ['boolean', ['feature-state', 'hover'], false], 0.25,
-                0.12,
+                ['boolean', ['feature-state', 'hover'], false], 0.30,
+                0.15,
               ],
             },
           }, 'piezo-clusters')
           map.addLayer({
-            id: 'bdlisa-line',
+            id: 'her-line',
             type: 'line',
-            source: 'bdlisa',
+            source: 'her',
             layout: { visibility: 'none' },
             paint: {
-              'line-color': 'rgba(255,255,255,0.25)',
-              'line-width': 0.5,
+              'line-color': 'rgba(255,255,255,0.3)',
+              'line-width': 0.8,
             },
           }, 'piezo-clusters')
 
-          let hoveredBdlisaId: number | null = null
-          map.on('mousemove', 'bdlisa-fill', (e) => {
+          let hoveredHERId: number | null = null
+          map.on('mousemove', 'her-fill', (e) => {
             if (!e.features?.length) return
             const feat = e.features[0]
-            if (hoveredBdlisaId !== null) map.setFeatureState({ source: 'bdlisa', id: hoveredBdlisaId }, { hover: false })
-            hoveredBdlisaId = feat.id as number
-            map.setFeatureState({ source: 'bdlisa', id: hoveredBdlisaId }, { hover: true })
-            const nom = feat.properties?.code ?? ''
-            const nature = feat.properties?.nature ?? ''
-            setTooltip({ name: `${nom}${nature ? ` · ${nature}` : ''}`, x: e.point.x, y: e.point.y })
+            if (hoveredHERId !== null) map.setFeatureState({ source: 'her', id: hoveredHERId }, { hover: false })
+            hoveredHERId = feat.id as number
+            map.setFeatureState({ source: 'her', id: hoveredHERId }, { hover: true })
+            const nom = feat.properties?.nom ?? ''
+            const her1 = feat.properties?.nom_her1 ?? ''
+            setTooltip({ name: `${nom}${her1 ? ` · ${her1}` : ''}`, x: e.point.x, y: e.point.y })
           })
-          map.on('mouseleave', 'bdlisa-fill', () => {
-            if (hoveredBdlisaId !== null) map.setFeatureState({ source: 'bdlisa', id: hoveredBdlisaId }, { hover: false })
-            hoveredBdlisaId = null
+          map.on('mouseleave', 'her-fill', () => {
+            if (hoveredHERId !== null) map.setFeatureState({ source: 'her', id: hoveredHERId }, { hover: false })
+            hoveredHERId = null
             setTooltip(null)
           })
-          map.on('click', 'bdlisa-fill', (e) => {
-            const code = e.features?.[0]?.properties?.code ?? null
-            const current = activeCodeBdlisaRef.current
-            onBdlisaClickRef.current?.(code === current ? null : code)
-          })
-          map.on('mouseenter', 'bdlisa-fill', () => { map.getCanvas().style.cursor = 'pointer' })
-          map.on('mouseleave', 'bdlisa-fill', () => { map.getCanvas().style.cursor = '' })
+          map.on('mouseenter', 'her-fill', () => { map.getCanvas().style.cursor = 'pointer' })
+          map.on('mouseleave', 'her-fill', () => { map.getCanvas().style.cursor = '' })
         })
 
       // --- SANDRE hydrological districts ---
@@ -549,14 +550,13 @@ export function ObservatoryMap({
       // This general handler clears spatial filters when clicking on empty map background
       // (no features from any of our interactive layers at the clicked point).
       map.on('click', (e) => {
-        const spatialLayers = ['depts-fill', 'regions-fill', 'bdlisa-fill', 'bassins-fill']
+        const spatialLayers = ['depts-fill', 'regions-fill', 'her-fill', 'bassins-fill']
         const stationLayers = ['piezo-clusters', 'piezo-unclustered', 'hydro-clusters', 'hydro-unclustered']
         const allInteractive = [...spatialLayers, ...stationLayers].filter(id => !!map.getLayer(id))
         const hits = map.queryRenderedFeatures(e.point, { layers: allInteractive })
         if (hits.length === 0) {
           // True empty click — clear all spatial filters
           onDeptClickRef.current?.(null)
-          onBdlisaClickRef.current?.(null)
           onBassinClickRef.current?.(null)
         }
       })
@@ -613,14 +613,14 @@ export function ObservatoryMap({
     if (map.getLayer('depts-line')) map.setLayoutProperty('depts-line', 'visibility', vis)
   }, [showDepts])
 
-  // Toggle BDLISA nappes visibility
+  // Toggle HER visibility (Calques panel)
   useEffect(() => {
     if (!mapRef.current || !mapLoadedRef.current) return
     const map = mapRef.current
-    const vis = showBdlisa ? 'visible' : 'none'
-    if (map.getLayer('bdlisa-fill')) map.setLayoutProperty('bdlisa-fill', 'visibility', vis)
-    if (map.getLayer('bdlisa-line')) map.setLayoutProperty('bdlisa-line', 'visibility', vis)
-  }, [showBdlisa])
+    const vis = showHER ? 'visible' : 'none'
+    if (map.getLayer('her-fill')) map.setLayoutProperty('her-fill', 'visibility', vis)
+    if (map.getLayer('her-line')) map.setLayoutProperty('her-line', 'visibility', vis)
+  }, [showHER])
 
   // Toggle SANDRE bassins visibility
   useEffect(() => {
@@ -652,20 +652,6 @@ export function ObservatoryMap({
       0,
     ])
   }, [activeCodeDepartement])
-
-  // Sync activeCodeBdlisa highlight
-  useEffect(() => {
-    activeCodeBdlisaRef.current = activeCodeBdlisa
-    if (!mapRef.current || !mapLoadedRef.current) return
-    const map = mapRef.current
-    if (!map.getLayer('bdlisa-fill')) return
-    map.setPaintProperty('bdlisa-fill', 'fill-opacity', [
-      'case',
-      ['==', ['get', 'code'], activeCodeBdlisa ?? '$$NONE$$'], 0.40,
-      ['boolean', ['feature-state', 'hover'], false], 0.25,
-      0.12,
-    ])
-  }, [activeCodeBdlisa])
 
   // Sync activeCodeBassin highlight
   useEffect(() => {

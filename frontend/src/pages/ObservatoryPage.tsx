@@ -1,42 +1,44 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { ObservatoryMap } from '../components/map/ObservatoryMap'
 import { StationPopup } from '../components/map/StationPopup'
 import { KPIBar } from '../components/map/KPIBar'
 import { SearchBar } from '../components/map/SearchBar'
+import { TemporalSlider } from '../components/map/TemporalSlider'
 import { GlobalFilters } from '../components/filters/GlobalFilters'
 import { useStationsGeoJSON } from '../hooks/useStations'
 import type { StationGeoJSONFeature } from '../lib/types'
+import { useERA5Dates, useERA5Monthly } from '../hooks/useERA5'
 import { useFilters } from '../hooks/useFilters'
+import { api } from '../lib/api'
 
-// Mapping: first char of code_cours_eau (Carthage system) → DCE district CdBH
-// Carthage letters ≠ DCE letters — verified against gold.dim_hydro_stations data.
-// A→Rhine (Moselle, Ill…), B→Meuse, D+E→Escaut-Somme, F+G+H+I→Seine-Normandie,
-// J+K+L+M+N→Loire-Bretagne, O+P+Q+R+S→Adour-Garonne, U+V+W+X+Y→Rhône-Méditerranée
-// Exception: Y rivers in depts 2A/2B are Corse (DCE E), not Rhône-Méditerranée.
+// Mapping from Carthage river code prefix (code_district = LEFT(code_cours_eau, 1))
+// to DCE hydrological district code (CdBH used in bassins.geojson)
+// Verified against gold.dim_hydro_stations DB data
 const CARTHAGE_TO_DCE: Record<string, string> = {
-  A: 'C', // Rhin (Moselle, Ill, Fecht…)
-  B: 'B', // Meuse (→ B1 or B2)
-  D: 'A', // Escaut-Somme (Sambre, Helpe…)
-  E: 'A', // Escaut-Somme (Aa, Lys, Escaut, Somme…)
-  F: 'H', // Seine-Normandie (Marne, Yerres…)
-  G: 'H', // Seine-Normandie (côtiers normands: Saane…)
-  H: 'H', // Seine-Normandie (Oise, Aisne, Risle…)
-  I: 'H', // Seine-Normandie (Orne, Dives, Douve…)
-  J: 'G', // Loire-Bretagne (côtiers bretons)
-  K: 'G', // Loire-Bretagne (Allier, Indre, Cher…)
-  L: 'G', // Loire-Bretagne (Thouet, Creuse…)
-  M: 'G', // Loire-Bretagne (Mayenne, Sarthe…)
-  N: 'G', // Loire-Bretagne (côtiers Vendée/Deux-Sèvres)
-  O: 'F', // Adour-Garonne (Garonne, Tarn, Aveyron…)
-  P: 'F', // Adour-Garonne (Dordogne, Vézère, Isle…)
-  Q: 'F', // Adour-Garonne (Adour, Gave de Pau…)
-  R: 'F', // Adour-Garonne (Charente, Boutonne…)
-  S: 'F', // Adour-Garonne (côtiers: Seudre, Nivelle…)
-  U: 'D', // Rhône-Méditerranée (Saône: Doubs, Reyssouze…)
-  V: 'D', // Rhône-Méditerranée (Gard, Ardèche, Cèze…)
-  W: 'D', // Rhône-Méditerranée Alpine (Isère, Arc…)
-  X: 'D', // Rhône-Méditerranée SE (Durance, Verdon…)
-  Y: 'D', // Rhône-Méditerranée côtiers + Corse (distingué par dept)
+  A: 'C',  // Rhin (Moselle, Ill, Fecht…)
+  B: 'B',  // Meuse → B1 or B2
+  D: 'A',  // Escaut-Somme (Sambre, Helpe…)
+  E: 'A',  // Escaut-Somme (Aa, Lys, Escaut, Somme…)
+  F: 'H',  // Seine-Normandie (Marne, Yerres…)
+  G: 'H',  // Seine-Normandie (côtiers normands)
+  H: 'H',  // Seine-Normandie (Oise, Aisne, Risle…)
+  I: 'H',  // Seine-Normandie (Orne, Dives, Douve…)
+  J: 'G',  // Loire-Bretagne (côtiers bretons)
+  K: 'G',  // Loire-Bretagne (Allier, Indre, Cher…)
+  L: 'G',  // Loire-Bretagne (Thouet, Creuse…)
+  M: 'G',  // Loire-Bretagne (Mayenne, Sarthe…)
+  N: 'G',  // Loire-Bretagne (côtiers Vendée/Deux-Sèvres)
+  O: 'F',  // Adour-Garonne (Garonne, Tarn, Aveyron…)
+  P: 'F',  // Adour-Garonne (Dordogne, Vézère, Isle…)
+  Q: 'F',  // Adour-Garonne (Adour, Gave de Pau…)
+  R: 'F',  // Adour-Garonne (Charente, Boutonne…)
+  S: 'F',  // Adour-Garonne (côtiers: Seudre, Nivelle…)
+  U: 'D',  // Rhône-Méditerranée (Saône: Doubs, Reyssouze…)
+  V: 'D',  // Rhône-Méditerranée (Gard, Ardèche, Cèze…)
+  W: 'D',  // Rhône-Méditerranée Alpine (Isère, Arc…)
+  X: 'D',  // Rhône-Méditerranée SE (Durance, Verdon…)
+  Y: 'D',  // Rhône-Méditerranée côtiers + Corse (distingué par dept)
 }
 
 function matchesBassin(
@@ -45,20 +47,23 @@ function matchesBassin(
   codeDept?: string | null,
 ): boolean {
   if (!codeDistrict) return false
-  // Corse (DCE E): toutes les stations des depts 2A et 2B
+  // Corse (DCE E) is identified by département 2A/2B (both use Carthage prefix Y)
   if (codeBassin === 'E') return codeDept === '2A' || codeDept === '2B'
-  // Les stations corses n'appartiennent à aucun autre bassin
   if (codeDept === '2A' || codeDept === '2B') return false
   const dce = CARTHAGE_TO_DCE[codeDistrict]
   if (!dce) return false
-  // B1 et B2 (Meuse) mappent tous les deux vers Carthage 'B'
+  // Meuse is split into B1/B2 in the SANDRE layer; both match DCE B
   if (codeBassin === 'B1' || codeBassin === 'B2') return dce === 'B'
   return dce === codeBassin
 }
 
 export default function ObservatoryPage() {
-  const { filters, setFilter, apiParams: _apiParams } = useFilters()
+  const { filters, setFilter, apiParams } = useFilters()
   const { data: geojsonData, isError: geojsonError } = useStationsGeoJSON()
+  const { data: nationalStats } = useQuery({
+    queryKey: ['stats', 'national'],
+    queryFn: api.stats.national,
+  })
 
   const filteredFeatures = useMemo<StationGeoJSONFeature[]>(() => {
     const all = geojsonData?.features ?? []
@@ -80,12 +85,48 @@ export default function ObservatoryPage() {
   const [showPiezo, setShowPiezo] = useState(true)
   const [showHydro, setShowHydro] = useState(true)
 
+  // ERA5 temporal controls
+  const [showERA5, setShowERA5] = useState(false)
+  const [era5Variable, setERA5Variable] = useState<'total_precipitation' | 'temperature_2m'>('total_precipitation')
+  const [era5DateIndex, setERA5DateIndex] = useState(0)
+  const [era5Playing, setERA5Playing] = useState(false)
+  const playIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
   // Calques panel state
   const [showCalques, setShowCalques] = useState(false)
   const [showRegions, setShowRegions] = useState(false)
   const [showDepts, setShowDepts] = useState(false)
-  const [showBdlisa, setShowBdlisa] = useState(false)
+  const [showHER, setShowHER] = useState(false)
   const [showSandre, setShowSandre] = useState(false)
+
+  const { data: era5Dates } = useERA5Dates()
+  const currentMonth = era5Dates?.[era5DateIndex]
+  const { data: era5Data } = useERA5Monthly(showERA5 ? currentMonth : undefined)
+
+  // Set slider to last date when dates load
+  useEffect(() => {
+    if (era5Dates?.length) {
+      setERA5DateIndex(era5Dates.length - 1)
+    }
+  }, [era5Dates])
+
+  // Playback logic - era5Dates intentionally excluded from deps to avoid interval leak
+  useEffect(() => {
+    if (!era5Playing || !era5Dates?.length) return
+    const total = era5Dates.length
+    const id = setInterval(() => {
+      setERA5DateIndex(prev => {
+        if (prev >= total - 1) {
+          setERA5Playing(false)
+          return prev
+        }
+        return prev + 1
+      })
+    }, 800)
+    playIntervalRef.current = id
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [era5Playing])
 
   const handleStationClick = useCallback((code: string, type: 'piezo' | 'hydro') => {
     setSelectedStation({ code, type })
@@ -95,13 +136,11 @@ export default function ObservatoryPage() {
     setFilter('dept', code ?? undefined)
   }, [setFilter])
 
-  const handleBdlisaClick = useCallback((code: string | null) => {
-    setFilter('bdlisa', code ?? undefined)
-  }, [setFilter])
-
   const handleBassinClick = useCallback((code: string | null) => {
     setFilter('bassin', code ?? undefined)
   }, [setFilter])
+
+  const totalCount = filteredFeatures.length
 
   return (
     <div className="relative h-full">
@@ -117,14 +156,15 @@ export default function ObservatoryPage() {
         showHydro={showHydro}
         onStationClick={handleStationClick}
         onDeptClick={handleDeptClick}
+        era5Data={era5Data}
+        era5Variable={era5Variable}
+        showERA5={showERA5}
         activeCodeDepartement={filters.codeDepartement}
         showRegions={showRegions}
         showDepts={showDepts}
-        showBdlisa={showBdlisa}
+        showHER={showHER}
         showSandre={showSandre}
-        onBdlisaClick={handleBdlisaClick}
         onBassinClick={handleBassinClick}
-        activeCodeBdlisa={filters.codeBdlisa}
         activeCodeBassin={filters.codeBassin}
       />
 
@@ -140,7 +180,7 @@ export default function ObservatoryPage() {
         totalCount={geojsonData?.features?.length ?? 0}
       />
 
-      {/* Layer toggles — Piézo + Hydro only */}
+      {/* Station layer toggles — Piézo + Hydro + ERA5 */}
       <div className="absolute top-16 md:top-4 left-4 md:left-[22rem] z-10 flex gap-1">
         <button
           onClick={() => setShowPiezo(!showPiezo)}
@@ -158,15 +198,22 @@ export default function ObservatoryPage() {
         >
           Hydro
         </button>
+        <button
+          onClick={() => setShowERA5(!showERA5)}
+          aria-label="Afficher couche ERA5"
+          aria-pressed={showERA5}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${showERA5 ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' : 'bg-bg-card/90 text-text-secondary border-white/10'}`}
+        >
+          ERA5
+        </button>
       </div>
 
-      {/* Calques floating panel — right side, below map nav controls */}
+      {/* Calques floating panel — right side */}
       <div className="absolute top-[8.5rem] right-3 z-10">
         <button
           onClick={() => setShowCalques(v => !v)}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${showCalques ? 'bg-bg-card border-white/20 text-text-primary' : 'bg-bg-card/80 border-white/10 text-text-secondary hover:text-text-primary'}`}
         >
-          {/* Layers icon: stacked lines */}
           <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
           </svg>
@@ -178,6 +225,7 @@ export default function ObservatoryPage() {
             {([
               { label: 'Régions', state: showRegions, setState: setShowRegions },
               { label: 'Départements', state: showDepts, setState: setShowDepts },
+              { label: 'Hydroécorégions', state: showHER, setState: setShowHER },
               { label: 'Bassins (SANDRE)', state: showSandre, setState: setShowSandre },
             ] as const).map(({ label, state, setState }) => (
               <label key={label} className="flex items-center gap-2 py-1 cursor-pointer group">
@@ -201,6 +249,18 @@ export default function ObservatoryPage() {
           onClose={() => setSelectedStation(null)}
         />
       )}
+
+      {showERA5 && era5Dates?.length ? (
+        <TemporalSlider
+          dates={era5Dates}
+          currentIndex={era5DateIndex}
+          onIndexChange={setERA5DateIndex}
+          isPlaying={era5Playing}
+          onPlayToggle={() => setERA5Playing(!era5Playing)}
+          variable={era5Variable}
+          onVariableChange={setERA5Variable}
+        />
+      ) : null}
 
       <KPIBar />
     </div>
