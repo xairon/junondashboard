@@ -5,7 +5,8 @@ import type {
   DailyPiezoMeasurement, DailyHydroMeasurement,
   MonthlyPiezoData, MonthlyHydroData,
   YearlyPiezoData, YearlyHydroData,
-  StationPercentiles
+  StationPercentiles,
+  StationGeoJSON
 } from './types'
 
 async function fetchJson<T>(path: string, params?: Record<string, string | string[] | undefined>): Promise<T> {
@@ -44,6 +45,8 @@ export const api = {
       fetchJson<StationPercentiles>(`/stations/piezo/${encodeURIComponent(code)}/percentiles`),
     hydroPercentiles: (code: string) =>
       fetchJson<StationPercentiles>(`/stations/hydro/${encodeURIComponent(code)}/percentiles`),
+    geojson: (stationType?: 'piezo' | 'hydro' | 'all') =>
+      fetchJson<StationGeoJSON>('/stations/geojson', stationType ? { type: stationType } : undefined),
   },
   timeseries: {
     piezoDaily: (code: string, params?: Record<string, string | undefined>) =>

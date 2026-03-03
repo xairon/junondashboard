@@ -143,6 +143,27 @@ export interface StationPercentiles {
   p90: number | null
 }
 
+// GeoJSON station types (endpoint /stations/geojson)
+export interface StationGeoJSONProperties {
+  code: string
+  type: 'piezo' | 'hydro'
+  classification: string | null
+  commune: string | null
+  departement: string | null
+  code_departement: string | null
+}
+
+export interface StationGeoJSONFeature {
+  type: 'Feature'
+  geometry: { type: 'Point'; coordinates: [number, number] }
+  properties: StationGeoJSONProperties
+}
+
+export interface StationGeoJSON {
+  type: 'FeatureCollection'
+  features: StationGeoJSONFeature[]
+}
+
 // Classification
 export type Classification = 'TRES_BAS' | 'BAS' | 'NORMAL' | 'HAUT' | 'TRES_HAUT' | 'UNKNOWN'
 export type TrendClassification = 'HAUSSE_FORTE' | 'HAUSSE_SIGNIFICATIVE' | 'STABLE' | 'BAISSE_SIGNIFICATIVE' | 'BAISSE_FORTE'

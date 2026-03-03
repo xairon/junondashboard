@@ -30,3 +30,11 @@ export function useHydroStationDetail(code: string) {
     enabled: !!code,
   })
 }
+
+export function useStationsGeoJSON() {
+  return useQuery({
+    queryKey: ['stations', 'geojson'],
+    queryFn: () => api.stations.geojson(),
+    staleTime: 3_600_000, // 1h — matches backend Redis TTL
+  })
+}
