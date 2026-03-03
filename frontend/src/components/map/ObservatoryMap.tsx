@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useMemo } from 'react'
+import { useRef, useEffect, useCallback, useMemo, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { CLASSIFICATION_COLORS, CLASSIFICATION_LABELS } from '../../lib/constants'
@@ -17,6 +17,7 @@ interface Props {
   era5Data?: any[]
   era5Variable?: 'total_precipitation' | 'temperature_2m'
   showERA5?: boolean
+  activeCodeDepartement?: string
 }
 
 /* ------------------------------------------------------------------ */
@@ -226,6 +227,22 @@ function era5ToGeoJSON(data: any[], variable: string) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Bounding box utility                                              */
+/* ------------------------------------------------------------------ */
+function computeBbox(geometry: any): [number, number, number, number] {
+  const coords: number[][] = []
+  const collect = (g: any) => {
+    if (g.type === 'Point') coords.push(g.coordinates)
+    else if (g.type === 'Polygon') g.coordinates[0].forEach((c: number[]) => coords.push(c))
+    else if (g.type === 'MultiPolygon') g.coordinates.forEach((p: number[][][]) => p[0].forEach((c: number[]) => coords.push(c)))
+  }
+  collect(geometry)
+  const lons = coords.map(c => c[0])
+  const lats = coords.map(c => c[1])
+  return [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)]
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main component                                                    */
 /* ------------------------------------------------------------------ */
 export function ObservatoryMap({
@@ -237,6 +254,7 @@ export function ObservatoryMap({
   era5Data,
   era5Variable = 'total_precipitation',
   showERA5 = false,
+  activeCodeDepartement = undefined,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
@@ -250,6 +268,10 @@ export function ObservatoryMap({
 
   const onDeptClickRef = useRef(onDeptClick)
   onDeptClickRef.current = onDeptClick
+
+  const [tooltip, setTooltip] = useState<{ name: string; x: number; y: number } | null>(null)
+
+  const activeCodeDeptRef = useRef<string | undefined>(activeCodeDepartement)
 
   const updateSource = useCallback((map: maplibregl.Map, sourceId: string, feats: StationGeoJSONFeature[]) => {
     const source = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined
@@ -291,6 +313,128 @@ export function ObservatoryMap({
           }
         })
       }
+
+      // --- Regions boundary layer ---
+      fetch('/geo/regions.geojson')
+        .then(r => r.json())
+        .then(data => {
+          if (map.getSource('regions')) return
+          map.addSource('regions', { type: 'geojson', data, generateId: true })
+          map.addLayer({
+            id: 'regions-fill',
+            type: 'fill',
+            source: 'regions',
+            maxzoom: 7,
+            paint: {
+              'fill-color': '#ffffff',
+              'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.10, 0],
+            },
+          })
+          map.addLayer({
+            id: 'regions-line',
+            type: 'line',
+            source: 'regions',
+            maxzoom: 7,
+            paint: {
+              'line-color': 'rgba(255,255,255,0.25)',
+              'line-width': 1,
+            },
+          })
+
+          // Hover regions
+          let hoveredRegionId: number | null = null
+          map.on('mousemove', 'regions-fill', (e) => {
+            if (!e.features?.length) return
+            const feat = e.features[0]
+            if (hoveredRegionId !== null) map.setFeatureState({ source: 'regions', id: hoveredRegionId }, { hover: false })
+            hoveredRegionId = feat.id as number
+            map.setFeatureState({ source: 'regions', id: hoveredRegionId }, { hover: true })
+            setTooltip({ name: feat.properties?.nom ?? '', x: e.point.x, y: e.point.y })
+          })
+          map.on('mouseleave', 'regions-fill', () => {
+            if (hoveredRegionId !== null) map.setFeatureState({ source: 'regions', id: hoveredRegionId }, { hover: false })
+            hoveredRegionId = null
+            setTooltip(null)
+          })
+
+          // Click region → zoom to its bounding box
+          map.on('click', 'regions-fill', (e) => {
+            const feat = e.features?.[0]
+            if (!feat) return
+            const bbox = computeBbox(feat.geometry)
+            map.fitBounds(bbox as maplibregl.LngLatBoundsLike, { padding: 60, duration: 500 })
+          })
+
+          map.on('mouseenter', 'regions-fill', () => { map.getCanvas().style.cursor = 'pointer' })
+          map.on('mouseleave', 'regions-fill', () => { map.getCanvas().style.cursor = '' })
+        })
+
+      // --- Departments boundary layer ---
+      fetch('/geo/departments.geojson')
+        .then(r => r.json())
+        .then(data => {
+          if (map.getSource('departments')) return
+          map.addSource('departments', { type: 'geojson', data, generateId: true })
+
+          map.addLayer({
+            id: 'depts-fill',
+            type: 'fill',
+            source: 'departments',
+            minzoom: 7,
+            paint: {
+              'fill-color': [
+                'case',
+                ['==', ['get', 'code'], activeCodeDeptRef.current ?? '$$NONE$$'],
+                '#22d3ee',
+                '#ffffff',
+              ],
+              'fill-opacity': [
+                'case',
+                ['==', ['get', 'code'], activeCodeDeptRef.current ?? '$$NONE$$'],
+                0.15,
+                ['boolean', ['feature-state', 'hover'], false],
+                0.08,
+                0,
+              ],
+            },
+          })
+          map.addLayer({
+            id: 'depts-line',
+            type: 'line',
+            source: 'departments',
+            minzoom: 7,
+            paint: {
+              'line-color': 'rgba(255,255,255,0.2)',
+              'line-width': 0.8,
+            },
+          })
+
+          // Hover departments
+          let hoveredDeptId: number | null = null
+          map.on('mousemove', 'depts-fill', (e) => {
+            if (!e.features?.length) return
+            const feat = e.features[0]
+            if (hoveredDeptId !== null) map.setFeatureState({ source: 'departments', id: hoveredDeptId }, { hover: false })
+            hoveredDeptId = feat.id as number
+            map.setFeatureState({ source: 'departments', id: hoveredDeptId }, { hover: true })
+            setTooltip({ name: `${feat.properties?.nom ?? ''} (${feat.properties?.code ?? ''})`, x: e.point.x, y: e.point.y })
+          })
+          map.on('mouseleave', 'depts-fill', () => {
+            if (hoveredDeptId !== null) map.setFeatureState({ source: 'departments', id: hoveredDeptId }, { hover: false })
+            hoveredDeptId = null
+            setTooltip(null)
+          })
+
+          // Click department → filter stations or deselect
+          map.on('click', 'depts-fill', (e) => {
+            const code = e.features?.[0]?.properties?.code ?? null
+            const current = activeCodeDeptRef.current
+            onDeptClickRef.current?.(code === current ? null : code)
+          })
+
+          map.on('mouseenter', 'depts-fill', () => { map.getCanvas().style.cursor = 'pointer' })
+          map.on('mouseleave', 'depts-fill', () => { map.getCanvas().style.cursor = '' })
+        })
 
       // --- ERA5 heatmap source + layer (under station layers) ---
       map.addSource('era5-heatmap', {
@@ -421,6 +565,28 @@ export function ObservatoryMap({
     }
   }, [showERA5, era5Data, era5Variable])
 
+  // Sync activeCodeDepartement to depts-fill paint properties
+  useEffect(() => {
+    activeCodeDeptRef.current = activeCodeDepartement
+    if (!mapRef.current || !mapLoadedRef.current) return
+    const map = mapRef.current
+    if (!map.getLayer('depts-fill')) return
+    map.setPaintProperty('depts-fill', 'fill-color', [
+      'case',
+      ['==', ['get', 'code'], activeCodeDepartement ?? '$$NONE$$'],
+      '#22d3ee',
+      '#ffffff',
+    ])
+    map.setPaintProperty('depts-fill', 'fill-opacity', [
+      'case',
+      ['==', ['get', 'code'], activeCodeDepartement ?? '$$NONE$$'],
+      0.15,
+      ['boolean', ['feature-state', 'hover'], false],
+      0.08,
+      0,
+    ])
+  }, [activeCodeDepartement])
+
   const piezoCount = useMemo(
     () => (features ?? []).filter(f => f.properties.type === 'piezo').length,
     [features]
@@ -439,6 +605,14 @@ export function ObservatoryMap({
         showPiezo={showPiezo}
         showHydro={showHydro}
       />
+      {tooltip && (
+        <div
+          className="absolute z-20 bg-gray-900/95 border border-white/10 rounded px-2 py-1 text-xs text-white pointer-events-none"
+          style={{ left: tooltip.x + 12, top: tooltip.y - 8 }}
+        >
+          {tooltip.name}
+        </div>
+      )}
     </div>
   )
 }

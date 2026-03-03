@@ -96,6 +96,7 @@ export default function ObservatoryPage() {
         era5Data={era5Data}
         era5Variable={era5Variable}
         showERA5={showERA5}
+        activeCodeDepartement={filters.codeDepartement}
       />
 
       <SearchBar
