@@ -98,3 +98,10 @@ class HydroStationDetail(BaseModel):
     resultat_moyen_dern_annee: float | None = None
     classification_resultat_dern_annee: str | None = None
     percentile_resultat_dern_annee: float | None = None
+
+
+class StationPercentiles(BaseModel):
+    p10: float | None = None
+    p25: float | None = None
+    p75: float | None = None
+    p90: float | None = None
