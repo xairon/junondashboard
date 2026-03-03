@@ -293,6 +293,21 @@ export function ObservatoryMap({
     map.on('load', () => {
       mapLoadedRef.current = true
 
+      // --- Override basemap labels to French ---
+      const style = map.getStyle()
+      if (style?.layers) {
+        style.layers.forEach((layer) => {
+          if (layer.type === 'symbol') {
+            const layout = (layer as maplibregl.SymbolLayerSpecification).layout
+            if (layout?.['text-field']) {
+              map.setLayoutProperty(layer.id, 'text-field', [
+                'coalesce', ['get', 'name:fr'], ['get', 'name'],
+              ])
+            }
+          }
+        })
+      }
+
       // --- ERA5 heatmap source + layer (under station layers) ---
       map.addSource('era5-heatmap', {
         type: 'geojson',

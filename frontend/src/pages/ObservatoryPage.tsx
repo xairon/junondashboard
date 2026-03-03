@@ -27,8 +27,8 @@ function formatRelativeTime(dateStr: string): string {
 
 export default function ObservatoryPage() {
   const { filters, setFilter, apiParams } = useFilters()
-  const { data: piezoStations, isLoading: piezoLoading, isError: piezoError } = usePiezoStations(apiParams)
-  const { data: hydroStations, isLoading: hydroLoading, isError: hydroError } = useHydroStations(apiParams)
+  const { data: piezoStations, isLoading: piezoLoading, isError: piezoError } = usePiezoStations({ ...apiParams, limit: '30000' })
+  const { data: hydroStations, isLoading: hydroLoading, isError: hydroError } = useHydroStations({ ...apiParams, limit: '30000' })
   const { data: nationalStats } = useQuery({
     queryKey: ['stats', 'national'],
     queryFn: api.stats.national,

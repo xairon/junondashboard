@@ -32,7 +32,7 @@ async def list_piezo_stations(
     code_departement: Optional[str] = Query(None, min_length=1, max_length=3, description="Filter by department code"),
     bbox: Optional[str] = Query(None, description="Bounding box: min_lon,min_lat,max_lon,max_lat"),
     search: Optional[str] = Query(None, min_length=2, max_length=100, description="Search by code_bss or nom_commune"),
-    limit: int = Query(500, ge=1, le=5000),
+    limit: int = Query(500, ge=1, le=30000),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
@@ -117,7 +117,7 @@ async def list_hydro_stations(
     grandeur_hydro: Optional[str] = Query(None, description="Filter by grandeur_hydro_principale"),
     bbox: Optional[str] = Query(None, description="Bounding box: min_lon,min_lat,max_lon,max_lat"),
     search: Optional[str] = Query(None, min_length=2, max_length=100, description="Search by code_station, libelle_station or nom_cours_eau"),
-    limit: int = Query(500, ge=1, le=5000),
+    limit: int = Query(500, ge=1, le=30000),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
