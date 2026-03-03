@@ -11,6 +11,7 @@ from app.json_response import FastJSONResponse
 from app.models.station import (
     HydroStationDetail,
     PiezoStationDetail,
+    StationPercentiles,
 )
 
 router = APIRouter(prefix="/api/v1/stations", tags=["stations"])
@@ -18,6 +19,7 @@ router = APIRouter(prefix="/api/v1/stations", tags=["stations"])
 PIEZO_LIST_TTL = 3600
 HYDRO_LIST_TTL = 3600
 DETAIL_TTL = 3600
+PERCENTILES_TTL = 86400  # 24h
 
 ClassificationType = Literal["TRES_BAS", "BAS", "NORMAL", "HAUT", "TRES_HAUT"]
 
@@ -315,4 +317,34 @@ async def get_hydro_station(
     data = await cached(r, key, DETAIL_TTL, fetch)
     if data is None:
         raise HTTPException(status_code=404, detail=f"Hydro station {code_station} not found")
+    return data
+
+@router.get("/piezo/{code_bss:path}/percentiles", response_model=StationPercentiles)
+async def get_piezo_percentiles(
+    code_bss: str,
+    db: AsyncSession = Depends(get_db),
+):
+    r = get_redis()
+    key = cache_key("piezo_percentiles", {"code_bss": code_bss})
+
+    async def fetch():
+        query = """
+            SELECT
+                PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY niveau_nappe_eau) AS p10,
+                PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY niveau_nappe_eau) AS p25,
+                PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY niveau_nappe_eau) AS p75,
+                PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY niveau_nappe_eau) AS p90
+            FROM gold.hubeau_daily_chroniques
+            WHERE code_bss = :code
+              AND niveau_nappe_eau IS NOT NULL
+        """
+        result = await db.execute(text(query), {"code": code_bss})
+        row = result.mappings().first()
+        if not row:
+            return None
+        return dict(row)
+
+    data = await cached(r, key, PERCENTILES_TTL, fetch)
+    if data is None:
+        raise HTTPException(status_code=404, detail=f"No data for piezo station {code_bss}")
     return data
