@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useParams, useLocation, Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Info } from 'lucide-react'
 import { usePiezoStationDetail, useHydroStationDetail } from '../hooks/useStations'
 import { usePiezoMonthly, useHydroMonthly, usePiezoDaily, useHydroDaily, usePiezoYearly, useHydroYearly } from '../hooks/useTimeseries'
@@ -8,6 +9,8 @@ import { TimeseriesChart } from '../components/charts/TimeseriesChart'
 import { CorrelationScatter } from '../components/charts/CorrelationScatter'
 import { SeasonalityChart } from '../components/charts/SeasonalityChart'
 import { YearlyHeatmap } from '../components/charts/YearlyHeatmap'
+import { PercentileChart } from '../components/charts/PercentileChart'
+import { api } from '../lib/api'
 
 type Resolution = 'daily' | 'monthly' | 'yearly'
 
@@ -134,18 +137,28 @@ export default function StationPage() {
     dailyEnd,
   )
 
-  // Yearly (only when resolution === 'yearly')
+  // Yearly (always fetched — needed for PercentileChart and resolution === 'yearly' view)
   const { data: piezoYearly, isLoading: piezoYearlyLoading } = usePiezoYearly(
-    isPiezo && resolution === 'yearly' ? code : '',
+    isPiezo ? code : '',
   )
   const { data: hydroYearly, isLoading: hydroYearlyLoading } = useHydroYearly(
-    !isPiezo && resolution === 'yearly' ? code : '',
+    !isPiezo ? code : '',
   )
 
   const station = isPiezo ? piezoStation : hydroStation
   const monthly = isPiezo ? piezoMonthly : hydroMonthly
   const stationLoading = isPiezo ? piezoLoading : hydroLoading
   const type = isPiezo ? 'piezo' as const : 'hydro' as const
+
+  // Percentile thresholds (P10/P25/P75/P90) for reference bands on chart
+  const { data: percentiles } = useQuery({
+    queryKey: ['percentiles', type, code],
+    queryFn: () => isPiezo
+      ? api.stations.piezoPercentiles(code)
+      : api.stations.hydroPercentiles(code),
+    enabled: !!code,
+    staleTime: 24 * 60 * 60 * 1000, // 24h
+  })
 
   // Select active data based on resolution
   const activeData = useMemo(() => {
@@ -447,6 +460,7 @@ export default function StationPage() {
               valueKey={valueKey}
               valueLabel={valueLabel}
               unit={unit}
+              percentiles={percentiles}
             />
           </div>
         ) : (
@@ -454,6 +468,18 @@ export default function StationPage() {
             Aucune donnée pour cette résolution
           </div>
         )}
+
+        {/* Rang centile historique annuel */}
+        {(() => {
+          const yearlyData = isPiezo ? piezoYearly : hydroYearly
+          if (!yearlyData?.length) return null
+          return (
+            <div className="bg-gray-900/50 rounded-xl border border-white/5 p-4">
+              <h3 className="text-sm font-semibold text-gray-300 mb-3">Rang centile historique annuel</h3>
+              <PercentileChart data={yearlyData} type={type} />
+            </div>
+          )
+        })()}
 
         {/* Correlation + Seasonality (use monthly data always) */}
         {monthly && monthly.length > 0 && (
