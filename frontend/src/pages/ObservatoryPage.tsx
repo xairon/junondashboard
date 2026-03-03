@@ -92,6 +92,10 @@ export default function ObservatoryPage() {
   const [era5Playing, setERA5Playing] = useState(false)
   const playIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // Calques panel state
+  const [showCalques, setShowCalques] = useState(false)
+  const [showRegions, setShowRegions] = useState(false)
+  const [showDepts, setShowDepts] = useState(false)
   const [showBdlisa, setShowBdlisa] = useState(false)
   const [showSandre, setShowSandre] = useState(false)
 
@@ -160,6 +164,8 @@ export default function ObservatoryPage() {
         era5Variable={era5Variable}
         showERA5={showERA5}
         activeCodeDepartement={filters.codeDepartement}
+        showRegions={showRegions}
+        showDepts={showDepts}
         showBdlisa={showBdlisa}
         showSandre={showSandre}
         onBdlisaClick={handleBdlisaClick}
@@ -180,7 +186,7 @@ export default function ObservatoryPage() {
         totalCount={geojsonData?.features?.length ?? 0}
       />
 
-      {/* Layer toggles */}
+      {/* Station layer toggles — Piézo + Hydro + ERA5 */}
       <div className="absolute top-16 md:top-4 left-4 md:left-[22rem] z-10 flex gap-1">
         <button
           onClick={() => setShowPiezo(!showPiezo)}
@@ -206,22 +212,40 @@ export default function ObservatoryPage() {
         >
           ERA5
         </button>
+      </div>
+
+      {/* Calques floating panel — right side */}
+      <div className="absolute top-[8.5rem] right-3 z-10">
         <button
-          onClick={() => setShowBdlisa(v => !v)}
-          aria-pressed={showBdlisa}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${showBdlisa ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400' : 'bg-bg-card/80 border-white/10 text-text-secondary hover:text-text-primary'}`}
+          onClick={() => setShowCalques(v => !v)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${showCalques ? 'bg-bg-card border-white/20 text-text-primary' : 'bg-bg-card/80 border-white/10 text-text-secondary hover:text-text-primary'}`}
         >
-          <div className="w-2 h-2 rounded-full bg-emerald-400" />
-          Nappes
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+          Calques
         </button>
-        <button
-          onClick={() => setShowSandre(v => !v)}
-          aria-pressed={showSandre}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${showSandre ? 'bg-blue-500/20 border-blue-500/50 text-blue-400' : 'bg-bg-card/80 border-white/10 text-text-secondary hover:text-text-primary'}`}
-        >
-          <div className="w-2 h-2 rounded-full bg-blue-400" />
-          Bassins
-        </button>
+        {showCalques && (
+          <div className="mt-1 bg-bg-card/95 backdrop-blur-sm border border-white/10 rounded-lg p-3 min-w-[10rem]">
+            <p className="text-[10px] font-semibold text-white/50 uppercase tracking-wider mb-2">Couches géographiques</p>
+            {([
+              { label: 'Régions', state: showRegions, setState: setShowRegions },
+              { label: 'Départements', state: showDepts, setState: setShowDepts },
+              { label: 'Nappes (BDLISA)', state: showBdlisa, setState: setShowBdlisa },
+              { label: 'Bassins (SANDRE)', state: showSandre, setState: setShowSandre },
+            ] as const).map(({ label, state, setState }) => (
+              <label key={label} className="flex items-center gap-2 py-1 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={state}
+                  onChange={e => setState(e.target.checked)}
+                  className="w-3.5 h-3.5 accent-accent-cyan rounded"
+                />
+                <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors">{label}</span>
+              </label>
+            ))}
+          </div>
+        )}
       </div>
 
       {selectedStation && (
