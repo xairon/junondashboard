@@ -4,7 +4,8 @@ import type {
   Alert, ERA5GridPoint,
   DailyPiezoMeasurement, DailyHydroMeasurement,
   MonthlyPiezoData, MonthlyHydroData,
-  YearlyPiezoData, YearlyHydroData
+  YearlyPiezoData, YearlyHydroData,
+  StationPercentiles
 } from './types'
 
 async function fetchJson<T>(path: string, params?: Record<string, string | string[] | undefined>): Promise<T> {
@@ -39,6 +40,10 @@ export const api = {
       fetchJson<HydroStation[]>('/stations/hydro', params),
     piezoDetail: (code: string) => fetchJson<PiezoStation>(`/stations/piezo/${code}`),
     hydroDetail: (code: string) => fetchJson<HydroStation>(`/stations/hydro/${code}`),
+    piezoPercentiles: (code: string) =>
+      fetchJson<StationPercentiles>(`/stations/piezo/${encodeURIComponent(code)}/percentiles`),
+    hydroPercentiles: (code: string) =>
+      fetchJson<StationPercentiles>(`/stations/hydro/${encodeURIComponent(code)}/percentiles`),
   },
   timeseries: {
     piezoDaily: (code: string, params?: Record<string, string | undefined>) =>
