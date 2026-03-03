@@ -57,6 +57,9 @@ interface Props {
   showSandre?: boolean
   onBassinClick?: (code: string | null) => void
   activeCodeBassin?: string
+  onRegionClick?: (code: string | null, stationCodes: string[] | null) => void
+  onHERClick?: (code: number | null, stationCodes: string[] | null) => void
+  onSpatialFilter?: (codes: string[] | null) => void
 }
 
 /* ------------------------------------------------------------------ */
@@ -158,6 +161,52 @@ function addClusteredSource(
 }
 
 /* ------------------------------------------------------------------ */
+/*  Point-in-polygon (ray casting) — supports Polygon & MultiPolygon */
+/* ------------------------------------------------------------------ */
+function pointInRing(x: number, y: number, ring: number[][]): boolean {
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1]
+    const xj = ring[j][0], yj = ring[j][1]
+    if (((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi)) {
+      inside = !inside
+    }
+  }
+  return inside
+}
+
+function pointInPolygon(lon: number, lat: number, geometry: any): boolean {
+  if (geometry.type === 'Polygon') {
+    const [outer, ...holes] = geometry.coordinates
+    if (!pointInRing(lon, lat, outer)) return false
+    for (const hole of holes) {
+      if (pointInRing(lon, lat, hole)) return false
+    }
+    return true
+  }
+  if (geometry.type === 'MultiPolygon') {
+    return geometry.coordinates.some((poly: number[][][]) => {
+      const [outer, ...holes] = poly
+      if (!pointInRing(lon, lat, outer)) return false
+      for (const hole of holes) {
+        if (pointInRing(lon, lat, hole)) return false
+      }
+      return true
+    })
+  }
+  return false
+}
+
+function stationsInGeometry(features: StationGeoJSONFeature[], geometry: any): string[] {
+  return features
+    .filter(f => {
+      const [lon, lat] = f.geometry.coordinates
+      return lon != null && lat != null && pointInPolygon(lon, lat, geometry)
+    })
+    .map(f => f.properties.code)
+}
+
+/* ------------------------------------------------------------------ */
 /*  Bounding box utility                                              */
 /* ------------------------------------------------------------------ */
 function computeBbox(geometry: any): [number, number, number, number] {
@@ -189,6 +238,9 @@ export function ObservatoryMap({
   showSandre = false,
   onBassinClick,
   activeCodeBassin,
+  onRegionClick,
+  onHERClick,
+  onSpatialFilter,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
@@ -206,8 +258,17 @@ export function ObservatoryMap({
   const onBassinClickRef = useRef(onBassinClick)
   onBassinClickRef.current = onBassinClick
 
-  const activeCodeBassinRef = useRef(activeCodeBassin)
+const activeCodeBassinRef = useRef(activeCodeBassin)
   activeCodeBassinRef.current = activeCodeBassin
+
+  const onRegionClickRef = useRef(onRegionClick)
+  onRegionClickRef.current = onRegionClick
+
+  const onHERClickRef = useRef(onHERClick)
+  onHERClickRef.current = onHERClick
+
+  const onSpatialFilterRef = useRef(onSpatialFilter)
+  onSpatialFilterRef.current = onSpatialFilter
 
   const [tooltip, setTooltip] = useState<{ name: string; x: number; y: number } | null>(null)
 
@@ -297,12 +358,14 @@ export function ObservatoryMap({
             setTooltip(null)
           })
 
-          // Click region → zoom to its bounding box
+// Click region → zoom + filter stations via point-in-polygon
           map.on('click', 'regions-fill', (e) => {
             const feat = e.features?.[0]
             if (!feat) return
             const bbox = computeBbox(feat.geometry)
             map.fitBounds(bbox as maplibregl.LngLatBoundsLike, { padding: 60, duration: 500 })
+            const codes = stationsInGeometry(featuresRef.current, feat.geometry)
+            onSpatialFilterRef.current?.(codes.length > 0 ? codes : null)
           })
 
           map.on('mouseenter', 'regions-fill', () => { map.getCanvas().style.cursor = 'pointer' })
@@ -365,9 +428,16 @@ export function ObservatoryMap({
             setTooltip(null)
           })
 
-          // Click department → filter stations or deselect
+// Click department → zoom + filter stations or deselect
           map.on('click', 'depts-fill', (e) => {
-            const code = e.features?.[0]?.properties?.code ?? null
+            const feat = e.features?.[0]
+            if (!feat) return
+
+            // Zoom to department
+            const bbox = computeBbox(feat.geometry)
+            map.fitBounds(bbox as maplibregl.LngLatBoundsLike, { padding: 60, duration: 500 })
+
+            const code = feat.properties?.code ?? null
             const current = activeCodeDeptRef.current
             onDeptClickRef.current?.(code === current ? null : code)
           })
@@ -431,6 +501,16 @@ export function ObservatoryMap({
             hoveredHERId = null
             setTooltip(null)
           })
+// Click HER → zoom + filter stations via point-in-polygon
+          map.on('click', 'her-fill', (e) => {
+            const feat = e.features?.[0]
+            if (!feat) return
+            const bbox = computeBbox(feat.geometry)
+            map.fitBounds(bbox as maplibregl.LngLatBoundsLike, { padding: 60, duration: 500 })
+            const codes = stationsInGeometry(featuresRef.current, feat.geometry)
+            onSpatialFilterRef.current?.(codes.length > 0 ? codes : null)
+          })
+
           map.on('mouseenter', 'her-fill', () => { map.getCanvas().style.cursor = 'pointer' })
           map.on('mouseleave', 'her-fill', () => { map.getCanvas().style.cursor = '' })
         })
@@ -491,9 +571,22 @@ export function ObservatoryMap({
             setTooltip(null)
           })
           map.on('click', 'bassins-fill', (e) => {
-            const code = e.features?.[0]?.properties?.CdBH ?? null
+            const feat = e.features?.[0]
+            if (!feat) return
+            const code = feat.properties?.CdBH ?? null
             const current = activeCodeBassinRef.current
-            onBassinClickRef.current?.(code === current ? null : code)
+            // Zoom to bassin
+            const bbox = computeBbox(feat.geometry)
+            map.fitBounds(bbox as maplibregl.LngLatBoundsLike, { padding: 60, duration: 500 })
+            // Toggle: deselect if same bassin clicked
+            if (code === current) {
+              onBassinClickRef.current?.(null)
+              onSpatialFilterRef.current?.(null)
+            } else {
+              onBassinClickRef.current?.(code)
+              const codes = stationsInGeometry(featuresRef.current, feat.geometry)
+              onSpatialFilterRef.current?.(codes.length > 0 ? codes : null)
+            }
           })
           map.on('mouseenter', 'bassins-fill', () => { map.getCanvas().style.cursor = 'pointer' })
           map.on('mouseleave', 'bassins-fill', () => { map.getCanvas().style.cursor = '' })
@@ -550,15 +643,24 @@ export function ObservatoryMap({
       // This general handler clears spatial filters when clicking on empty map background
       // (no features from any of our interactive layers at the clicked point).
       map.on('click', (e) => {
-        const spatialLayers = ['depts-fill', 'regions-fill', 'her-fill', 'bassins-fill']
         const stationLayers = ['piezo-clusters', 'piezo-unclustered', 'hydro-clusters', 'hydro-unclustered']
-        const allInteractive = [...spatialLayers, ...stationLayers].filter(id => !!map.getLayer(id))
-        const hits = map.queryRenderedFeatures(e.point, { layers: allInteractive })
-        if (hits.length === 0) {
-          // True empty click — clear all spatial filters
-          onDeptClickRef.current?.(null)
-          onBassinClickRef.current?.(null)
-        }
+          .filter(id => !!map.getLayer(id))
+        const stationHits = map.queryRenderedFeatures(e.point, { layers: stationLayers })
+        if (stationHits.length > 0) return // clic sur une station, on ne clear pas
+
+        // Vérifier si on a cliqué sur un layer spatial VISIBLE
+        const visibleSpatialLayers = ['depts-fill', 'regions-fill', 'her-fill', 'bassins-fill']
+          .filter(id => {
+            if (!map.getLayer(id)) return false
+            return map.getLayoutProperty(id, 'visibility') === 'visible'
+          })
+        const spatialHits = map.queryRenderedFeatures(e.point, { layers: visibleSpatialLayers })
+        if (spatialHits.length > 0) return // clic sur un layer spatial, géré par son propre handler
+
+        // Clic vraiment vide — clear tous les filtres spatiaux
+        onDeptClickRef.current?.(null)
+        onBassinClickRef.current?.(null)
+        onSpatialFilterRef.current?.(null)
       })
     })
 
