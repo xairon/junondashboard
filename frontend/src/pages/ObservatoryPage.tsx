@@ -90,10 +90,12 @@ export default function ObservatoryPage() {
 
   const handleDeptClick = useCallback((code: string | null) => {
     setFilter('dept', code ?? undefined)
+    if (!code) setFilter('stations', undefined)
   }, [setFilter])
 
   const handleBassinClick = useCallback((code: string | null) => {
     setFilter('bassin', code ?? undefined)
+    if (!code) setFilter('stations', undefined)
   }, [setFilter])
 
   const handleSpatialFilter = useCallback((codes: string[] | null) => {

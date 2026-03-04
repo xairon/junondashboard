@@ -91,11 +91,10 @@ export function LayerPanel({
                   {group.layers.map(layer => (
                     <label key={layer.id} className="flex items-center gap-2 py-0.5 cursor-pointer group">
                       <input
-                        type={group.mode === 'radio' ? 'radio' : 'checkbox'}
-                        name={group.mode === 'radio' ? `wfs-group-${group.id}` : undefined}
+                        type="checkbox"
                         checked={activeWfsLayers.has(layer.id)}
                         onChange={() => onToggleWfsLayer(layer.id, group.id)}
-                        className="w-3 h-3 accent-accent-cyan"
+                        className={`w-3 h-3 accent-accent-cyan ${group.mode === 'radio' ? 'rounded-full' : ''}`}
                       />
                       <span
                         className="w-2 h-2 rounded-full flex-shrink-0"

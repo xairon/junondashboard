@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import traceback
 from contextlib import asynccontextmanager
@@ -24,6 +25,8 @@ async def lifespan(app: FastAPI):
             logging.getLogger(__name__).info("Redis connection OK")
         except Exception as e:
             logging.getLogger(__name__).warning("Redis ping failed: %s", e)
+    # Warm WFS cache in background (don't block startup)
+    asyncio.create_task(wfs.warm_wfs_cache())
     yield
     if redis_pool is not None:
         await redis_pool.aclose()

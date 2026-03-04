@@ -1,7 +1,7 @@
 services:
   redis:
     image: redis:7-alpine
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command: redis-server --maxmemory 1gb --maxmemory-policy allkeys-lru
     restart: unless-stopped
     volumes:
       - redis-data:/data
