@@ -11,7 +11,7 @@ from app.cache import get_redis, pool as redis_pool
 from app.config import settings
 from app.database import engine, get_db
 from app.json_response import FastJSONResponse
-from app.routers import stations, timeseries, trends, stats, era5, alerts
+from app.routers import stations, timeseries, trends, stats, era5, alerts, wfs
 
 
 @asynccontextmanager
@@ -53,6 +53,7 @@ app.include_router(trends.router)
 app.include_router(stats.router)
 app.include_router(era5.router)
 app.include_router(alerts.router)
+app.include_router(wfs.router)
 
 
 @app.get("/api/v1/health")

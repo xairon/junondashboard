@@ -76,4 +76,8 @@ export const api = {
     dates: () => fetchJson<string[]>('/era5/dates'),
     monthly: (month: string) => fetchJson<ERA5GridPoint[]>('/era5/monthly', { month }),
   },
+  wfs: {
+    layer: (layerId: string, bbox?: string) =>
+      fetchJson<any>(`/wfs/${layerId}`, bbox ? { bbox } : undefined),
+  },
 }

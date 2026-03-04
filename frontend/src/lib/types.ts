@@ -177,3 +177,19 @@ export const CHART_TOOLTIP_STYLE = {
   borderRadius: 8,
   fontSize: 12,
 } as const
+
+// WFS Layer types
+export type WfsLayerId =
+  | 'region-hydro' | 'secteur-hydro' | 'sous-secteur-hydro' | 'zone-hydro'
+  | 'cours-eau-1' | 'cours-eau-2' | 'plan-eau'
+  | 'masse-eau-sout' | 'masse-eau-riv'
+
+export interface WfsLayerConfig {
+  id: WfsLayerId
+  label: string
+  group: 'sandre' | 'carthage' | 'hydroeco' | 'admin'
+  minZoom: number
+  geometryType: 'polygon' | 'line'
+  color: string
+  tooltipFields: string[]
+}
