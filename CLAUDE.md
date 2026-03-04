@@ -103,3 +103,4 @@ Station lists/GeoJSON: 1h. Alerts: 1h. Daily timeseries: 6h. Monthly/trends: 12h
 - **ERA5** — ECMWF climate reanalysis (temperature, precipitation, evaporation). Pre-aggregated in `int_era5_*` tables
 - **BDLISA** — Groundwater body database. Static GeoJSON in `public/geo/bdlisa.geojson`
 - **Admin boundaries** — Régions, départements from official data. Static GeoJSON in `public/geo/`
+- **AWS Terrain Tiles** — Raster DEM tiles (terrarium encoding) for hillshading overlay. Streamed from `s3.amazonaws.com/elevation-tiles-prod/terrarium/`

@@ -6,9 +6,7 @@ import { usePiezoStationDetail, useHydroStationDetail, useBdlisaLookup } from '.
 import { usePiezoMonthly, useHydroMonthly, usePiezoDaily, useHydroDaily, usePiezoYearly, useHydroYearly } from '../hooks/useTimeseries'
 import { StationKPICards } from '../components/station/StationKPICards'
 import { TimeseriesChart } from '../components/charts/TimeseriesChart'
-import { CorrelationScatter } from '../components/charts/CorrelationScatter'
 import { SeasonalityChart } from '../components/charts/SeasonalityChart'
-import { YearlyHeatmap } from '../components/charts/YearlyHeatmap'
 import { api } from '../lib/api'
 
 type Resolution = 'daily' | 'monthly' | 'yearly'
@@ -476,35 +474,13 @@ export default function StationPage() {
           </div>
         )}
 
-        {/* Correlation + Seasonality (use monthly data always) */}
-        {monthly && monthly.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-bg-card border border-white/5 rounded-xl p-5">
-              <CorrelationScatter
-                data={monthly}
-                xKey="precipitation_totale"
-                yKey={isPiezo ? 'niveau_moyen' : 'resultat_moyen'}
-                xLabel="Précipitations (mm)"
-                yLabel={valueLabel}
-              />
-            </div>
-            <div className="bg-bg-card border border-white/5 rounded-xl p-5">
-              <SeasonalityChart
-                data={monthly}
-                valueKey={isPiezo ? 'niveau_moyen' : 'resultat_moyen'}
-                label={valueLabel}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Yearly Heatmap (use monthly data always) */}
+        {/* Seasonality (use monthly data always) */}
         {monthly && monthly.length > 0 && (
           <div className="bg-bg-card border border-white/5 rounded-xl p-5">
-            <YearlyHeatmap
+            <SeasonalityChart
               data={monthly}
               valueKey={isPiezo ? 'niveau_moyen' : 'resultat_moyen'}
-              label={`Heatmap annuel - ${valueLabel}`}
+              label={valueLabel}
             />
           </div>
         )}

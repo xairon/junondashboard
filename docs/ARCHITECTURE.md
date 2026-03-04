@@ -544,5 +544,5 @@ Cache : 24h Redis, pré-chauffé au démarrage du backend.
 
 #### Fond de Carte
 
-- **Voyager Light** (CartoDB) — basemap vectoriel clair
-- **Relief** — surcouche hillshading depuis tuiles d'élévation AWS (encodage terrarium)
+- **Voyager Light** (CartoDB) — basemap vectoriel clair, URL : `https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json`
+- **Relief (hillshading)** — surcouche calculée à la volée par MapLibre GL depuis les tuiles d'élévation AWS Terrain Tiles (encodage terrarium). URL : `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png`. Pas de téléchargement local, streamé en temps réel. Source de type `raster-dem` avec couche `hillshade` (exaggeration: 0.15, opacité: 0.15)
