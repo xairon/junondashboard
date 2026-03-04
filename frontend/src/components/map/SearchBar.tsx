@@ -62,7 +62,7 @@ export function SearchBar({ features, onSelect }: Props) {
   }, [open, results, highlightIndex, selectItem])
 
   return (
-    <div ref={wrapperRef} className="absolute top-4 left-12 md:left-4 z-10 w-56 md:w-80">
+    <div ref={wrapperRef} className="absolute top-4 left-4 z-10 w-64 sm:w-80">
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary" />
         <input
