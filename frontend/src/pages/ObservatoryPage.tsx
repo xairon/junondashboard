@@ -26,12 +26,15 @@ export default function ObservatoryPage() {
         const codes = f.properties.codes_bdlisa ?? ''
         if (!codes.startsWith(filters.codeBdlisa)) return false
       }
+      if (filters.lastMeasurementAfter && f.properties.derniere_mesure) {
+        if (f.properties.derniere_mesure < filters.lastMeasurementAfter) return false
+      }
       if (filters.stationCodes?.length) {
         if (!filters.stationCodes.includes(f.properties.code)) return false
       }
       return true
     })
-  }, [geojsonData, filters.activeOnly, filters.codeDepartement, filters.classification, filters.codeBdlisa, filters.stationCodes])
+  }, [geojsonData, filters.activeOnly, filters.codeDepartement, filters.classification, filters.codeBdlisa, filters.lastMeasurementAfter, filters.stationCodes])
 
   const [selectedStation, setSelectedStation] = useState<{ code: string; type: 'piezo' | 'hydro' } | null>(null)
   const [showPiezo, setShowPiezo] = useState(true)
@@ -90,12 +93,12 @@ export default function ObservatoryPage() {
 
   const handleDeptClick = useCallback((code: string | null) => {
     setFilter('dept', code ?? undefined)
-    if (!code) setFilter('stations', undefined)
+    setFilter('stations', undefined)
   }, [setFilter])
 
   const handleBassinClick = useCallback((code: string | null) => {
     setFilter('bassin', code ?? undefined)
-    if (!code) setFilter('stations', undefined)
+    setFilter('stations', undefined)
   }, [setFilter])
 
   const handleSpatialFilter = useCallback((codes: string[] | null) => {
