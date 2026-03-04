@@ -10,6 +10,51 @@ import { LAYER_GROUPS } from '../lib/layerConfig'
 import type { StationGeoJSONFeature, WfsLayerId } from '../lib/types'
 import { useFilters } from '../hooks/useFilters'
 
+type Bbox = [number, number, number, number] // [minLon, minLat, maxLon, maxLat]
+
+/** Check if any coordinate of a GeoJSON feature intersects a bbox */
+function featureIntersectsBbox(feature: any, bbox: Bbox): boolean {
+  const [minLon, minLat, maxLon, maxLat] = bbox
+  const coords: number[][] = []
+
+  const collectCoords = (geom: any) => {
+    if (!geom) return
+    switch (geom.type) {
+      case 'Point':
+        coords.push(geom.coordinates)
+        break
+      case 'LineString':
+      case 'MultiPoint':
+        geom.coordinates.forEach((c: number[]) => coords.push(c))
+        break
+      case 'Polygon':
+      case 'MultiLineString':
+        geom.coordinates.forEach((ring: number[][]) => ring.forEach((c: number[]) => coords.push(c)))
+        break
+      case 'MultiPolygon':
+        geom.coordinates.forEach((poly: number[][][]) =>
+          poly.forEach((ring: number[][]) => ring.forEach((c: number[]) => coords.push(c)))
+        )
+        break
+    }
+  }
+  collectCoords(feature.geometry)
+  // Check if any coordinate falls within the bbox (with some margin)
+  const margin = 0.1
+  return coords.some(c =>
+    c[0] >= minLon - margin && c[0] <= maxLon + margin &&
+    c[1] >= minLat - margin && c[1] <= maxLat + margin
+  )
+}
+
+function filterGeoJSONByBbox(geojson: any, bbox: Bbox): any {
+  if (!geojson?.features) return geojson
+  return {
+    ...geojson,
+    features: geojson.features.filter((f: any) => featureIntersectsBbox(f, bbox)),
+  }
+}
+
 export default function ObservatoryPage() {
   const { filters, setFilter } = useFilters()
   const { data: geojsonData, isError: geojsonError } = useStationsGeoJSON()
@@ -29,12 +74,13 @@ export default function ObservatoryPage() {
       if (filters.lastMeasurementAfter && f.properties.derniere_mesure) {
         if (f.properties.derniere_mesure < filters.lastMeasurementAfter) return false
       }
+      if (filters.minObservations && (f.properties.nb_observations ?? 0) < filters.minObservations) return false
       if (filters.stationCodes?.length) {
         if (!filters.stationCodes.includes(f.properties.code)) return false
       }
       return true
     })
-  }, [geojsonData, filters.activeOnly, filters.codeDepartement, filters.classification, filters.codeBdlisa, filters.lastMeasurementAfter, filters.stationCodes])
+  }, [geojsonData, filters.activeOnly, filters.codeDepartement, filters.classification, filters.codeBdlisa, filters.lastMeasurementAfter, filters.minObservations, filters.stationCodes])
 
   const [selectedStation, setSelectedStation] = useState<{ code: string; type: 'piezo' | 'hydro' } | null>(null)
   const [showPiezo, setShowPiezo] = useState(true)
@@ -46,6 +92,7 @@ export default function ObservatoryPage() {
   const [showSandre, setShowSandre] = useState(false)
 
   const [activeWfsLayers, setActiveWfsLayers] = useState<Set<WfsLayerId>>(new Set())
+  const [activeBbox, setActiveBbox] = useState<Bbox | null>(null)
 
   const handleToggleWfsLayer = useCallback((layerId: WfsLayerId, groupId: string) => {
     setActiveWfsLayers(prev => {
@@ -72,18 +119,25 @@ export default function ObservatoryPage() {
   const masseEauRiv = useWfsLayer('masse-eau-riv', activeWfsLayers.has('masse-eau-riv'))
 
   const wfsData = useMemo(() => {
-    const d: Record<string, any> = {}
-    if (regionHydro.data) d['region-hydro'] = regionHydro.data
-    if (secteurHydro.data) d['secteur-hydro'] = secteurHydro.data
-    if (sousSecteurHydro.data) d['sous-secteur-hydro'] = sousSecteurHydro.data
-    if (zoneHydro.data) d['zone-hydro'] = zoneHydro.data
-    if (coursEau1.data) d['cours-eau-1'] = coursEau1.data
-    if (coursEau2.data) d['cours-eau-2'] = coursEau2.data
-    if (planEau.data) d['plan-eau'] = planEau.data
-    if (masseEauRiv.data) d['masse-eau-riv'] = masseEauRiv.data
-    return d
+    const raw: Record<string, any> = {}
+    if (regionHydro.data) raw['region-hydro'] = regionHydro.data
+    if (secteurHydro.data) raw['secteur-hydro'] = secteurHydro.data
+    if (sousSecteurHydro.data) raw['sous-secteur-hydro'] = sousSecteurHydro.data
+    if (zoneHydro.data) raw['zone-hydro'] = zoneHydro.data
+    if (coursEau1.data) raw['cours-eau-1'] = coursEau1.data
+    if (coursEau2.data) raw['cours-eau-2'] = coursEau2.data
+    if (planEau.data) raw['plan-eau'] = planEau.data
+    if (masseEauRiv.data) raw['masse-eau-riv'] = masseEauRiv.data
+
+    // Filter by active bbox if a spatial selection is active
+    if (!activeBbox) return raw
+    const filtered: Record<string, any> = {}
+    for (const [key, data] of Object.entries(raw)) {
+      filtered[key] = filterGeoJSONByBbox(data, activeBbox)
+    }
+    return filtered
   }, [regionHydro.data, secteurHydro.data, sousSecteurHydro.data, zoneHydro.data,
-      coursEau1.data, coursEau2.data, planEau.data, masseEauRiv.data])
+      coursEau1.data, coursEau2.data, planEau.data, masseEauRiv.data, activeBbox])
 
   const handleStationClick = useCallback((code: string, type: 'piezo' | 'hydro') => {
     setSelectedStation({ code, type })
@@ -92,16 +146,33 @@ export default function ObservatoryPage() {
   const handleDeptClick = useCallback((code: string | null) => {
     setFilter('dept', code ?? undefined)
     setFilter('stations', undefined)
+    if (!code) setActiveBbox(null)
   }, [setFilter])
 
   const handleBassinClick = useCallback((code: string | null) => {
     setFilter('bassin', code ?? undefined)
     setFilter('stations', undefined)
+    if (!code) setActiveBbox(null)
   }, [setFilter])
 
   const handleSpatialFilter = useCallback((codes: string[] | null) => {
     setFilter('stations', codes ?? undefined)
+    if (!codes) setActiveBbox(null)
   }, [setFilter])
+
+  const handleBboxChange = useCallback((bbox: Bbox | null) => {
+    setActiveBbox(bbox)
+  }, [])
+
+  const stationCounts = useMemo(() => {
+    const all = geojsonData?.features ?? []
+    return {
+      filteredPiezo: filteredFeatures.filter(f => f.properties.type === 'piezo').length,
+      filteredHydro: filteredFeatures.filter(f => f.properties.type === 'hydro').length,
+      totalPiezo: all.filter(f => f.properties.type === 'piezo').length,
+      totalHydro: all.filter(f => f.properties.type === 'hydro').length,
+    }
+  }, [filteredFeatures, geojsonData])
 
   return (
     <div className="relative h-full">
@@ -125,6 +196,7 @@ export default function ObservatoryPage() {
         onBassinClick={handleBassinClick}
         activeCodeBassin={filters.codeBassin}
         onSpatialFilter={handleSpatialFilter}
+        onBboxChange={handleBboxChange}
         activeWfsLayers={activeWfsLayers}
         wfsData={wfsData}
       />
@@ -163,7 +235,12 @@ export default function ObservatoryPage() {
         />
       )}
 
-      <KPIBar />
+      <KPIBar
+        filteredPiezo={stationCounts.filteredPiezo}
+        filteredHydro={stationCounts.filteredHydro}
+        totalPiezo={stationCounts.totalPiezo}
+        totalHydro={stationCounts.totalHydro}
+      />
     </div>
   )
 }

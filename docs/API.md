@@ -771,9 +771,9 @@ Cache Redis : **24 heures**.
 
 ## Alertes
 
-### GET /api/v1/alerts
+### GET /api/v1/common/alerts
 
-Liste des stations en situation extrême (classification TRES_BAS ou TRES_HAUT par défaut), avec pagination.
+Liste des stations actives (mesures < 90 jours) en situation anormale, avec historique de durée consécutive.
 Cache Redis : **1 heure**.
 
 **Paramètres de requête :**
@@ -783,13 +783,12 @@ Cache Redis : **1 heure**.
 | `severity` | string[] | `["TRES_BAS","TRES_HAUT"]` | Classifications à inclure (répétable) : `TRES_BAS`, `BAS`, `HAUT`, `TRES_HAUT` |
 | `type` | string | — | `piezo` ou `hydro` (sans filtre = les deux types) |
 | `code_departement` | string (1–3 chars) | — | Filtre par département |
-| `limit` | integer | `100` | 1–10000 |
-| `offset` | integer | `0` | Décalage |
+| `active_only` | boolean | `true` | Ne retourner que les stations avec des mesures récentes (< 90 jours) |
 
 **Exemple :**
 
 ```
-GET /api/v1/alerts?severity=TRES_BAS&type=piezo&code_departement=34
+GET /api/v1/common/alerts?severity=TRES_BAS&severity=BAS&severity=HAUT&severity=TRES_HAUT
 ```
 
 **Réponse 200 :**
@@ -805,12 +804,44 @@ GET /api/v1/alerts?severity=TRES_BAS&type=piezo&code_departement=34
     "code_departement": "34",
     "departement": "Hérault",
     "classification": "TRES_BAS",
-    "derniere_mesure": "2024-12-28"
+    "derniere_mesure": "2026-02-15",
+    "alerte_depuis_annee": 2024,
+    "nb_annees_consecutives": 3
   }
 ]
 ```
 
-**En-têtes de réponse :** `X-Total-Count: <n>`
+Les champs `alerte_depuis_annee` et `nb_annees_consecutives` sont calculés en remontant les classifications annuelles consécutives dans `fct_yearly_stats`/`fct_yearly_hydro`.
+
+---
+
+## WFS (calques hydrographiques)
+
+### GET /api/v1/wfs/{layer_id}
+
+Proxy WFS vers les services SANDRE. Retourne du GeoJSON compressé gzip.
+Cache Redis : **24 heures**, pré-chauffé au démarrage du backend.
+
+**Calques disponibles :**
+
+| `layer_id` | Source SANDRE | Description |
+|---|---|---|
+| `region-hydro` | `RegionHydro` | Régions hydrographiques |
+| `secteur-hydro` | `SecteurHydro` | Secteurs hydrographiques |
+| `sous-secteur-hydro` | `SousSecteurHydro` | Sous-secteurs hydrographiques |
+| `zone-hydro` | `ZoneHydro` | Zones hydrographiques |
+| `cours-eau-1` | `CoursEau1` | Cours d'eau principaux (> 100 km) |
+| `cours-eau-2` | `CoursEau2` | Cours d'eau secondaires (50–100 km) |
+| `plan-eau` | `PlanEau_FXX` | Plans d'eau |
+| `masse-eau-riv` | `MasseDEauRiviere_VRAP2022_FXX` | Masses d'eau rivières (DCE) |
+
+**Paramètres de requête :**
+
+| Nom | Type | Défaut | Description |
+|---|---|---|---|
+| `bbox` | string | — | Bounding box `minLon,minLat,maxLon,maxLat` (optionnel) |
+
+**Réponse 200 :** GeoJSON FeatureCollection (Content-Encoding: gzip)
 
 ---
 

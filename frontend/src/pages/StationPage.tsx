@@ -9,7 +9,6 @@ import { TimeseriesChart } from '../components/charts/TimeseriesChart'
 import { CorrelationScatter } from '../components/charts/CorrelationScatter'
 import { SeasonalityChart } from '../components/charts/SeasonalityChart'
 import { YearlyHeatmap } from '../components/charts/YearlyHeatmap'
-import { PercentileChart } from '../components/charts/PercentileChart'
 import { api } from '../lib/api'
 
 type Resolution = 'daily' | 'monthly' | 'yearly'
@@ -105,7 +104,7 @@ export default function StationPage() {
   // Strip the leading "piezo/" or "hydro/" to get the actual station code (e.g. "05604X0162/SF1").
   const code = (params['*'] || '').replace(/^(piezo|hydro)\//, '')
 
-  const [resolution, setResolution] = useState<Resolution>('monthly')
+  const [resolution, setResolution] = useState<Resolution>('daily')
 
   // Default daily range: last 2 years
   const defaultEnd = useMemo(() => {
@@ -139,12 +138,12 @@ export default function StationPage() {
     dailyEnd,
   )
 
-  // Yearly (always fetched — needed for PercentileChart and resolution === 'yearly' view)
+  // Yearly (only when resolution === 'yearly')
   const { data: piezoYearly, isLoading: piezoYearlyLoading } = usePiezoYearly(
-    isPiezo ? code : '',
+    isPiezo && resolution === 'yearly' ? code : '',
   )
   const { data: hydroYearly, isLoading: hydroYearlyLoading } = useHydroYearly(
-    !isPiezo ? code : '',
+    !isPiezo && resolution === 'yearly' ? code : '',
   )
 
   const station: any = isPiezo ? piezoStation : hydroStation
@@ -157,8 +156,8 @@ export default function StationPage() {
   const { data: percentiles } = useQuery({
     queryKey: ['percentiles', type, code],
     queryFn: () => isPiezo
-      ? api.stations.piezoPercentiles(code)
-      : api.stations.hydroPercentiles(code),
+      ? api.piezo.percentiles(code)
+      : api.hydro.percentiles(code),
     enabled: !!code,
     staleTime: 24 * 60 * 60 * 1000, // 24h
   })
@@ -215,7 +214,9 @@ export default function StationPage() {
 
   const valueKey = resolution === 'daily'
     ? (isPiezo ? 'niveau_nappe_eau' : 'resultat_obs_elab')
-    : (isPiezo ? 'niveau_moyen' : 'resultat_moyen')
+    : resolution === 'yearly'
+      ? (isPiezo ? 'niveau_moyen_annuel' : 'resultat_moyen_annuel')
+      : (isPiezo ? 'niveau_moyen' : 'resultat_moyen')
   const valueLabel = isPiezo ? 'Niveau nappe (m NGF)' : `${hydroLabel} (${hydroUnit})`
   const unit = isPiezo ? 'm NGF' : hydroUnit
 
@@ -272,12 +273,6 @@ export default function StationPage() {
                     label="Altitude station"
                     value={station.altitude_station != null
                       ? `${station.altitude_station.toFixed(0)} m NGF`
-                      : null}
-                  />
-                  <MetaRow
-                    label="Percentile année courante"
-                    value={station.percentile_derniere_annee != null
-                      ? `${Math.round(station.percentile_derniere_annee)}e centile`
                       : null}
                   />
                   <MetaRow
@@ -354,12 +349,6 @@ export default function StationPage() {
                     value={formatDateFR(station.derniere_mesure)}
                   />
                   <MetaRow
-                    label="Percentile année courante"
-                    value={station.percentile_resultat_dern_annee != null
-                      ? `${Math.round(station.percentile_resultat_dern_annee)}e centile`
-                      : null}
-                  />
-                  <MetaRow
                     label="Année dernier bilan"
                     value={station.annee_dernier_bilan != null
                       ? String(station.annee_dernier_bilan)
@@ -419,7 +408,16 @@ export default function StationPage() {
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-xs text-text-secondary font-medium">Résolution :</span>
           <div role="group" aria-label="Résolution temporelle" className="flex gap-1">
-            {RESOLUTION_OPTIONS.map((opt) => (
+            {RESOLUTION_OPTIONS
+              .filter((opt) => {
+                if (opt.value === 'monthly') {
+                  const loading = isPiezo ? piezoMonthlyLoading : hydroMonthlyLoading
+                  if (loading) return true // show while loading
+                  return (monthly?.length ?? 0) > 0
+                }
+                return true // daily and yearly always shown
+              })
+              .map((opt) => (
               <button
                 key={opt.value}
                 aria-pressed={resolution === opt.value}
@@ -467,7 +465,9 @@ export default function StationPage() {
               valueKey={valueKey}
               valueLabel={valueLabel}
               unit={unit}
-              percentiles={percentiles}
+              precipKey={resolution === 'yearly' ? 'precipitation_totale_annuelle' : 'precipitation_totale'}
+              percentiles={resolution === 'yearly' ? undefined : percentiles}
+              resolution={resolution}
             />
           </div>
         ) : (
@@ -475,18 +475,6 @@ export default function StationPage() {
             Aucune donnée pour cette résolution
           </div>
         )}
-
-        {/* Rang centile historique annuel */}
-        {(() => {
-          const yearlyData = isPiezo ? piezoYearly : hydroYearly
-          if (!yearlyData?.length) return null
-          return (
-            <div className="bg-gray-900/50 rounded-xl border border-white/5 p-4">
-              <h3 className="text-sm font-semibold text-gray-300 mb-3">Rang centile historique annuel</h3>
-              <PercentileChart data={yearlyData} type={type} />
-            </div>
-          )
-        })()}
 
         {/* Correlation + Seasonality (use monthly data always) */}
         {monthly && monthly.length > 0 && (

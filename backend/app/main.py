@@ -12,7 +12,7 @@ from app.cache import get_redis, pool as redis_pool
 from app.config import settings
 from app.database import engine, get_db
 from app.json_response import FastJSONResponse
-from app.routers import stations, timeseries, trends, stats, era5, alerts, wfs
+from app.routers import piezo, hydro, common, era5, wfs
 
 
 @asynccontextmanager
@@ -50,12 +50,10 @@ app.add_middleware(
     allow_headers=["Content-Type", "Accept"],
 )
 
-app.include_router(stations.router)
-app.include_router(timeseries.router)
-app.include_router(trends.router)
-app.include_router(stats.router)
+app.include_router(piezo.router)
+app.include_router(hydro.router)
+app.include_router(common.router)
 app.include_router(era5.router)
-app.include_router(alerts.router)
 app.include_router(wfs.router)
 
 

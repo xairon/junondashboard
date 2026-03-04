@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { Map, TrendingUp, AlertTriangle, GitCompareArrows, Menu, X } from 'lucide-react'
+import { Map, AlertTriangle, GitCompareArrows, Menu, X } from 'lucide-react'
 
 const NAV_ITEMS = [
   { to: '/', icon: Map, label: 'Observatoire' },
-  { to: '/trends', icon: TrendingUp, label: 'Tendances' },
   { to: '/alerts', icon: AlertTriangle, label: 'Alertes' },
   { to: '/compare', icon: GitCompareArrows, label: 'Comparer' },
 ] as const

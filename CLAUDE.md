@@ -38,7 +38,7 @@ curl http://localhost/api/v1/health      # health check
 
 ### Backend (`backend/app/`)
 - **Entry:** `main.py` — FastAPI app with lifespan (Redis + SQLAlchemy init/teardown), CORS, routers
-- **Routers:** `routers/{stations,timeseries,trends,stats,era5,alerts}.py` — one per domain, prefix `/api/v1/<domain>`
+- **Routers:** `routers/{piezo,hydro,common,era5,wfs}.py` — one per domain, prefix `/api/v1/<domain>`
 - **Models:** `models/` — Pydantic response schemas
 - **DB:** `database.py` — async SQLAlchemy engine + `get_db()` dependency. All queries use `text()` with `:param` placeholders (never string formatting). Schema: `gold.*`
 - **Cache:** `cache.py` — Redis cache-aside with two helpers:
@@ -53,13 +53,14 @@ curl http://localhost/api/v1/health      # health check
 - **Routing:** `routes.tsx` — all pages lazy-loaded via `React.lazy`. Station detail: `/station/:type/:code`
 - **API layer:** `lib/api.ts` — typed `fetchJson<T>()` + `api.*` namespace. All backend calls go through here
 - **Types:** `lib/types.ts` — all interfaces
-- **Constants:** `lib/constants.ts` — `CLASSIFICATION_COLORS`, `CLASSIFICATION_LABELS`, `API_BASE`
+- **Constants:** `lib/constants.ts` — `CLASSIFICATION_COLORS`, `CLASSIFICATION_LABELS`, `TREND_LABELS`, `TREND_COLORS`, `API_BASE`
 - **Hooks:** `hooks/use*.ts` — TanStack Query hooks (staleTime: 5min default)
 - **State:** filter state lives in URL search params via `useFilters()` (uses `useSearchParams`). No global state library
 - **Import alias:** `@/` maps to `src/`
-- **Map:** `components/map/ObservatoryMap.tsx` — imperative MapLibre GL via `useRef`. GeoJSON files served from `public/geo/`
-- **RightDrawer:** `components/map/RightDrawer.tsx` — unified control panel (data toggles, filters, layer management)
-- **StationDrawer:** `components/map/StationDrawer.tsx` — left drawer for station info on marker click
+- **Map:** `components/map/ObservatoryMap.tsx` — imperative MapLibre GL via `useRef`. Voyager basemap + terrain hillshading. Static GeoJSON from `public/geo/` (regions, departments, bassins, HER, BDLISA). WFS layers from `/api/v1/wfs/` (SANDRE zonage, Carthage waterways, DCE water masses)
+- **Layer config:** `lib/layerConfig.ts` — WFS layer definitions (groups: SANDRE zonage, Carthage, hydro-écologie), colors, min zoom, tooltips
+- **RightDrawer:** `components/map/RightDrawer.tsx` — unified control panel (data toggles, filters, layer management with radio/checkbox groups)
+- **StationDrawer:** `components/map/StationDrawer.tsx` — left drawer on marker click. Shows situation actuelle, tendance, historique, climat ERA5, contexte hydrogéologique. Hidden for inactive stations (>90 days without data)
 - **Theme:** dark theme with CSS variables in `index.css` under `@theme {}`. Status colors: `status-tres-bas` (red), `status-bas` (orange), `status-normal` (green), `status-haut` (blue), `status-tres-haut` (dark blue)
 
 ### Adding a new endpoint
@@ -94,4 +95,11 @@ curl http://localhost/api/v1/health      # health check
 PostgreSQL schema `gold` (external, not in Docker Compose). Key tables: `dim_piezo_stations`, `dim_hydro_stations`, `hubeau_daily_chroniques`, `hydro_daily_chroniques`, `fct_monthly_*`, `fct_yearly_*`, `agg_station_trends`, `agg_hydro_trends`, `int_era5_*`.
 
 ## Cache TTLs
-Station lists/GeoJSON: 1h. Daily timeseries: 6h. Monthly/trends: 12h. Annual/percentiles/ERA5: 24h. Compare: 30min.
+Station lists/GeoJSON: 1h. Alerts: 1h. Daily timeseries: 6h. Monthly/trends: 12h. Annual/percentiles/ERA5: 24h. WFS layers: 24h. Compare: 30min.
+
+## Data sources
+- **Hub'Eau** — BRGM API for piezometric and hydrometric data (imported into PostgreSQL `gold` schema)
+- **SANDRE** — WFS services for hydrographic reference data (zones, waterways, water masses). Base URL: `services.sandre.eaufrance.fr/geo/zonage`
+- **ERA5** — ECMWF climate reanalysis (temperature, precipitation, evaporation). Pre-aggregated in `int_era5_*` tables
+- **BDLISA** — Groundwater body database. Static GeoJSON in `public/geo/bdlisa.geojson`
+- **Admin boundaries** — Régions, départements from official data. Static GeoJSON in `public/geo/`

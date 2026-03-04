@@ -69,12 +69,11 @@ app/
 │   ├── timeseries.py # Schémas séries temporelles
 │   └── era5.py       # Schémas ERA5
 └── routers/          # Handlers de routes (1 router = 1 domaine métier)
-    ├── stations.py
-    ├── timeseries.py
-    ├── trends.py
-    ├── stats.py
-    ├── era5.py
-    └── alerts.py
+    ├── piezo.py      # /api/v1/piezo/ — stations, timeseries, trends, stats piézométriques
+    ├── hydro.py      # /api/v1/hydro/ — stations, timeseries, trends, stats hydrométriques
+    ├── common.py     # /api/v1/common/ — GeoJSON, alertes, stats nationales/départementales
+    ├── era5.py       # /api/v1/era5/ — données climatiques ERA5
+    └── wfs.py        # /api/v1/wfs/ — proxy WFS SANDRE (zonage, Carthage, masses d'eau DCE)
 ```
 
 ### Pattern Async et Lifespan
@@ -172,14 +171,16 @@ Jusqu'à 10 requêtes DB simultanées pour l'endpoint de comparaison.
 ```
 App (main.tsx)
 └── RouterProvider (routes.tsx)
-    └── Layout (Sidebar + Outlet)
+    └── Layout (TopNav + Outlet)
         ├── ObservatoryPage (/)
-        │   ├── ObservatoryMap (MapLibre GL)
-        │   │   ├── StationPopup
-        │   │   ├── KPIBar
-        │   │   ├── SearchBar
-        │   │   └── TemporalSlider
-        │   └── Filters
+        │   ├── ObservatoryMap (MapLibre GL, Voyager basemap + terrain hillshading)
+        │   │   ├── Stations piézo/hydro (clusters avec offset)
+        │   │   ├── Calques admin (régions, départements, bassins, HER)
+        │   │   ├── Calques WFS SANDRE (zonage, Carthage, masses d'eau DCE)
+        │   │   └── BDLISA (couche aquifères)
+        │   ├── RightDrawer (panneau droit : données / filtres / calques)
+        │   ├── StationDrawer (panneau gauche au clic : situation, tendance, historique)
+        │   └── KPIBar (statistiques nationales)
         ├── StationPage (/station/:type/:code)
         │   ├── StationKPICards
         │   ├── ClassificationBadge
@@ -188,12 +189,11 @@ App (main.tsx)
         │   ├── CorrelationScatter
         │   ├── SeasonalityChart
         │   └── YearlyHeatmap
-        ├── TrendsPage (/trends)
-        │   └── Panneau latéral avec tableau de tendances
         ├── AlertsPage (/alerts)
-        │   └── Tableau trié des stations en alerte
+        │   └── Onglets par sévérité (Très bas / Bas / Haut / Très haut)
+        │       └── Tableau par classification avec durée consécutive
         └── ComparePage (/compare)
-            └── Graphique multi-séries avec normalisation
+            └── Multi-séries (jusqu'à 5 stations) avec normalisation z-score
 ```
 
 ### Flux de Données
@@ -397,6 +397,7 @@ Le système utilise deux niveaux de cache :
 | Données ERA5 | 24 heures | Mises à jour mensuelles |
 | Alertes | 1 heure | Fraîcheur opérationnelle |
 | Comparaison multi-stations | 30 minutes | Requêtes variées, TTL court |
+| WFS SANDRE (zonage, Carthage) | 24 heures | Données de référence, rarement modifiées |
 
 ### Comportement en cas d'Indisponibilité Redis
 
@@ -498,3 +499,50 @@ TanStack Query gère automatiquement le cache, la deduplication des requêtes id
 ### Pourquoi MapLibre GL plutôt que Mapbox GL ou Leaflet ?
 
 MapLibre GL est un fork open-source de Mapbox GL JS v1 sans licence propriétaire. Il est compatible avec les tuiles vectorielles standards (OpenMapTiles, MapTiler, etc.) et offre les performances WebGL nécessaires pour afficher plusieurs milliers de marqueurs simultanément avec interactions fluides.
+
+---
+
+## Sources de Données
+
+### Données Stations (PostgreSQL)
+
+| Source | Tables | Description |
+|---|---|---|
+| **Hub'Eau / BRGM** | `dim_piezo_stations`, `hubeau_daily_chroniques`, `fct_monthly_chroniques`, `fct_yearly_stats` | Données piézométriques (eaux souterraines) |
+| **Hub'Eau / SCHAPI** | `dim_hydro_stations`, `hydro_daily_chroniques`, `fct_monthly_hydro`, `fct_yearly_hydro` | Données hydrométriques (eaux de surface) |
+| **ERA5 / ECMWF** | `int_era5_for_stations`, `int_era5_grid_points` | Réanalyse climatique (température, précipitations, évaporation) |
+| **BRGM** | `agg_station_trends`, `agg_hydro_trends` | Tendances calculées (pente de Sen) |
+
+### Calques Carte
+
+#### Calques WFS (chargés dynamiquement via `/api/v1/wfs/`)
+
+Source : **SANDRE** (services.sandre.eaufrance.fr)
+
+| Calque | Service WFS | Description | Zoom min |
+|---|---|---|---|
+| Régions hydrographiques | `geo/zonage` / `RegionHydro` | 6 grandes régions hydro françaises | 0 |
+| Secteurs hydrographiques | `geo/zonage` / `SecteurHydro` | Subdivisions des régions hydro | 6 |
+| Sous-secteurs | `geo/zonage` / `SousSecteurHydro` | Subdivisions des secteurs | 7 |
+| Zones hydrographiques | `geo/zonage` / `ZoneHydro` | Plus fin découpage SANDRE | 9 |
+| Cours d'eau principaux | `geo/zonage` / `CoursEau1` | Cours d'eau > 100 km (lignes) | 6 |
+| Cours d'eau secondaires | `geo/zonage` / `CoursEau2` | Cours d'eau 50–100 km (lignes) | 8 |
+| Plans d'eau | `geo/zonage` / `PlanEau_FXX` | Lacs, retenues (polygones) | 8 |
+| Masses d'eau rivières (DCE) | `MasseDEau_VRAP2022` / `MasseDEauRiviere_VRAP2022_FXX` | Directive Cadre sur l'Eau | 8 |
+
+Cache : 24h Redis, pré-chauffé au démarrage du backend.
+
+#### Calques Statiques (GeoJSON dans `public/geo/`)
+
+| Fichier | Description | Taille |
+|---|---|---|
+| `regions.geojson` | Limites administratives régionales | ~200 KB |
+| `departments.geojson` | Limites départementales | ~1.5 MB |
+| `bassins.geojson` | Districts hydrographiques SANDRE (A, B1, C, D, E, F, G, H) | ~500 KB |
+| `her.geojson` | Hydroécorégions de niveau 2 (HER-2) | ~2 MB |
+| `bdlisa.geojson` | Entités hydrogéologiques BDLISA | ~4.7 MB |
+
+#### Fond de Carte
+
+- **Voyager Light** (CartoDB) — basemap vectoriel clair
+- **Relief** — surcouche hillshading depuis tuiles d'élévation AWS (encodage terrarium)

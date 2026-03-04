@@ -44,6 +44,7 @@ interface Props {
   onRegionClick?: (code: string | null, stationCodes: string[] | null) => void
   onHERClick?: (code: number | null, stationCodes: string[] | null) => void
   onSpatialFilter?: (codes: string[] | null) => void
+  onBboxChange?: (bbox: [number, number, number, number] | null) => void
   activeWfsLayers?: Set<WfsLayerId>
   wfsData?: Record<string, any>
 }
@@ -82,6 +83,7 @@ function addClusteredSource(
   strokeColor: string,
   pointColor: string,
   clusterColor: string,
+  clusterOffset: [number, number] = [0, 0],
 ) {
   map.addSource(sourceId, {
     type: 'geojson',
@@ -110,6 +112,7 @@ function addClusteredSource(
       'circle-opacity': 0.75,
       'circle-stroke-width': 2,
       'circle-stroke-color': 'rgba(255,255,255,0.2)',
+      'circle-translate': clusterOffset,
     },
   })
 
@@ -124,6 +127,7 @@ function addClusteredSource(
       'text-font': ['Open Sans Bold'],
       'text-size': 11,
       'text-allow-overlap': true,
+      'text-offset': [clusterOffset[0] / 16, clusterOffset[1] / 16],
     },
     paint: {
       'text-color': '#ffffff',
@@ -227,6 +231,7 @@ export function ObservatoryMap({
   onRegionClick,
   onHERClick,
   onSpatialFilter,
+  onBboxChange,
   activeWfsLayers = new Set() as Set<WfsLayerId>,
   wfsData,
 }: Props) {
@@ -257,6 +262,9 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
 
   const onSpatialFilterRef = useRef(onSpatialFilter)
   onSpatialFilterRef.current = onSpatialFilter
+
+  const onBboxChangeRef = useRef(onBboxChange)
+  onBboxChangeRef.current = onBboxChange
 
   const [tooltip, setTooltip] = useState<{ name: string; x: number; y: number } | null>(null)
 
@@ -346,8 +354,8 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
             type: 'fill',
             source: 'regions',
             paint: {
-              'fill-color': '#ffffff',
-              'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.10, 0],
+              'fill-color': '#6366f1',
+              'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.35, 0.12],
             },
             layout: { visibility: regVis },
           }, 'piezo-clusters')
@@ -356,8 +364,9 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
             type: 'line',
             source: 'regions',
             paint: {
-              'line-color': 'rgba(255,255,255,0.25)',
-              'line-width': 1,
+              'line-color': '#6366f1',
+              'line-width': 2,
+              'line-opacity': 0.6,
             },
             layout: { visibility: regVis },
           }, 'piezo-clusters')
@@ -386,6 +395,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
             map.fitBounds(bbox as maplibregl.LngLatBoundsLike, { padding: 60, duration: 500 })
             const codes = stationsInGeometry(featuresRef.current, feat.geometry)
             onSpatialFilterRef.current?.(codes.length > 0 ? codes : null)
+            onBboxChangeRef.current?.(bbox)
           })
 
           map.on('mouseenter', 'regions-fill', () => { map.getCanvas().style.cursor = 'pointer' })
@@ -409,15 +419,15 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
                 'case',
                 ['==', ['get', 'code'], activeCodeDeptRef.current ?? '$$NONE$$'],
                 '#22d3ee',
-                '#ffffff',
+                '#f97316',
               ],
               'fill-opacity': [
                 'case',
                 ['==', ['get', 'code'], activeCodeDeptRef.current ?? '$$NONE$$'],
-                0.15,
+                0.30,
                 ['boolean', ['feature-state', 'hover'], false],
-                0.08,
-                0,
+                0.25,
+                0.10,
               ],
             },
             layout: { visibility: deptVis },
@@ -427,8 +437,9 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
             type: 'line',
             source: 'departments',
             paint: {
-              'line-color': 'rgba(255,255,255,0.2)',
-              'line-width': 0.8,
+              'line-color': '#f97316',
+              'line-width': 1.5,
+              'line-opacity': 0.5,
             },
             layout: { visibility: deptVis },
           }, 'piezo-clusters')
@@ -460,7 +471,9 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
 
             const code = feat.properties?.code ?? null
             const current = activeCodeDeptRef.current
-            onDeptClickRef.current?.(code === current ? null : code)
+            const deselecting = code === current
+            onDeptClickRef.current?.(deselecting ? null : code)
+            onBboxChangeRef.current?.(deselecting ? null : bbox)
           })
 
           map.on('mouseenter', 'depts-fill', () => { map.getCanvas().style.cursor = 'pointer' })
@@ -531,6 +544,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
             map.fitBounds(bbox as maplibregl.LngLatBoundsLike, { padding: 60, duration: 500 })
             const codes = stationsInGeometry(featuresRef.current, feat.geometry)
             onSpatialFilterRef.current?.(codes.length > 0 ? codes : null)
+            onBboxChangeRef.current?.(bbox)
           })
 
           map.on('mouseenter', 'her-fill', () => { map.getCanvas().style.cursor = 'pointer' })
@@ -605,21 +619,23 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
             if (code === current) {
               onBassinClickRef.current?.(null)
               onSpatialFilterRef.current?.(null)
+              onBboxChangeRef.current?.(null)
             } else {
               onBassinClickRef.current?.(code)
               const codes = stationsInGeometry(featuresRef.current, feat.geometry)
               onSpatialFilterRef.current?.(codes.length > 0 ? codes : null)
+              onBboxChangeRef.current?.(bbox)
             }
           })
           map.on('mouseenter', 'bassins-fill', () => { map.getCanvas().style.cursor = 'pointer' })
           map.on('mouseleave', 'bassins-fill', () => { map.getCanvas().style.cursor = '' })
         })
 
-      // --- Piezo clustered source + layers ---
-      addClusteredSource(map, 'piezo-stations', 'piezo', 0, 'transparent', buildColorExpression() as any, '#22d3ee')
+      // --- Piezo clustered source + layers (offset left to avoid hydro overlap) ---
+      addClusteredSource(map, 'piezo-stations', 'piezo', 0, 'transparent', buildColorExpression() as any, '#22d3ee', [-20, -6])
 
-      // --- Hydro clustered source + layers ---
-      addClusteredSource(map, 'hydro-stations', 'hydro', 1, 'rgba(255,255,255,0.3)', buildColorExpression() as any, '#6366f1')
+      // --- Hydro clustered source + layers (offset right to avoid piezo overlap) ---
+      addClusteredSource(map, 'hydro-stations', 'hydro', 1, 'rgba(255,255,255,0.3)', buildColorExpression() as any, '#6366f1', [20, 6])
 
       // Populate with any data that already loaded
       const allFeatures = featuresRef.current
@@ -689,6 +705,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
         onDeptClickRef.current?.(null)
         onBassinClickRef.current?.(null)
         onSpatialFilterRef.current?.(null)
+        onBboxChangeRef.current?.(null)
       })
     })
 
@@ -771,15 +788,15 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
       'case',
       ['==', ['get', 'code'], activeCodeDepartement ?? '$$NONE$$'],
       '#22d3ee',
-      '#ffffff',
+      '#f97316',
     ])
     map.setPaintProperty('depts-fill', 'fill-opacity', [
       'case',
       ['==', ['get', 'code'], activeCodeDepartement ?? '$$NONE$$'],
-      0.15,
+      0.30,
       ['boolean', ['feature-state', 'hover'], false],
-      0.08,
-      0,
+      0.25,
+      0.10,
     ])
   }, [activeCodeDepartement])
 
@@ -876,6 +893,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
             map.fitBounds(bbox as maplibregl.LngLatBoundsLike, { padding: 60, duration: 500 })
             const codes = stationsInGeometry(featuresRef.current, feat.geometry)
             onSpatialFilterRef.current?.(codes.length > 0 ? codes : null)
+            onBboxChangeRef.current?.(bbox)
           })
         }
       }

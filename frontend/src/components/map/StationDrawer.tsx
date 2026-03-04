@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom'
-import { X, ExternalLink, Calendar, Database, Mountain } from 'lucide-react'
+import { X, ExternalLink, TrendingUp, TrendingDown, Minus, Droplets, Waves } from 'lucide-react'
 import { ClassificationBadge } from '../station/ClassificationBadge'
-import { formatNumber } from '../../lib/utils'
+import { formatNumber, formatDate } from '../../lib/utils'
+import { CLASSIFICATION_COLORS } from '../../lib/constants'
 import { usePiezoStationDetail, useHydroStationDetail, useBdlisaLookup } from '../../hooks/useStations'
 
 interface Props {
@@ -10,17 +11,20 @@ interface Props {
   onClose: () => void
 }
 
-function formatPeriod(start?: string | null, end?: string | null): string {
-  if (!start && !end) return '—'
-  const fmt = (d: string) => new Date(d).getFullYear().toString()
-  if (start && end) return `${fmt(start)} – ${fmt(end)}`
-  if (end) return `jusqu'en ${fmt(end)}`
-  return `depuis ${fmt(start!)}`
+const TREND_CONFIG: Record<string, { label: string; icon: typeof TrendingUp; color: string }> = {
+  HAUSSE_FORTE:          { label: 'Hausse forte',          icon: TrendingUp,   color: '#3b82f6' },
+  HAUSSE_SIGNIFICATIVE:  { label: 'Hausse significative',  icon: TrendingUp,   color: '#60a5fa' },
+  STABLE:                { label: 'Stable',                icon: Minus,        color: '#10b981' },
+  BAISSE_SIGNIFICATIVE:  { label: 'Baisse significative',  icon: TrendingDown, color: '#f97316' },
+  BAISSE_FORTE:          { label: 'Baisse forte',          icon: TrendingDown, color: '#ef4444' },
 }
 
-function formatCount(n?: number | null): string {
-  if (n == null) return '—'
-  return n.toLocaleString('fr-FR')
+function isRecent(dateStr: string | null | undefined): boolean {
+  if (!dateStr) return false
+  const d = new Date(dateStr)
+  const ago = new Date()
+  ago.setMonth(ago.getMonth() - 3)
+  return d >= ago
 }
 
 function DrawerSkeleton({ onClose }: { onClose: () => void }) {
@@ -36,10 +40,23 @@ function DrawerSkeleton({ onClose }: { onClose: () => void }) {
           <X className="w-4 h-4 text-text-secondary" />
         </button>
       </div>
-      <div className="space-y-2">
-        <div className="h-6 w-20 bg-white/10 rounded animate-pulse" />
-        <div className="h-3 w-full bg-white/10 rounded animate-pulse" />
-        <div className="h-3 w-3/4 bg-white/10 rounded animate-pulse" />
+      <div className="space-y-3">
+        <div className="h-16 w-full bg-white/5 rounded-lg animate-pulse" />
+        <div className="h-16 w-full bg-white/5 rounded-lg animate-pulse" />
+        <div className="h-12 w-full bg-white/5 rounded-lg animate-pulse" />
+      </div>
+    </div>
+  )
+}
+
+/** Compact labeled row */
+function InfoRow({ label, value, sub }: { label: string; value: React.ReactNode; sub?: React.ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between py-1.5">
+      <span className="text-xs text-text-secondary">{label}</span>
+      <div className="text-right">
+        <span className="text-xs text-text-primary font-medium">{value}</span>
+        {sub && <div className="text-[10px] text-text-secondary">{sub}</div>}
       </div>
     </div>
   )
@@ -55,93 +72,227 @@ export function StationDrawer({ code, type, onClose }: Props) {
   const content = (() => {
     if (isLoading || !station) return <DrawerSkeleton onClose={onClose} />
 
-    const bdlisa = isPiezo ? bdlisaLookup((station as any).codes_bdlisa) : null
+    const s = station as any
+    const bdlisa = isPiezo ? bdlisaLookup(s.codes_bdlisa) : null
     const name = isPiezo
-      ? ((station as any).nom_commune || (station as any).code_bss)
-      : ((station as any).libelle_station || (station as any).code_station)
-    const stationCode = isPiezo ? (station as any).code_bss : (station as any).code_station
-    const classification = isPiezo
-      ? (station as any).classification_derniere_annee
-      : (station as any).classification_resultat_dern_annee
-    const value = isPiezo
-      ? (station as any).niveau_derniere_annee
-      : (station as any).resultat_moyen_global
-    const unit = isPiezo ? 'm NGF' : 'm³/s'
-    const dept = (station as any).nom_departement ?? (station as any).code_departement ?? ''
+      ? (s.nom_commune || s.code_bss)
+      : (s.libelle_station || s.code_station)
+    const stationCode = isPiezo ? s.code_bss : s.code_station
+    const dept = s.nom_departement ?? s.code_departement ?? ''
+
+    // Classification & current value
+    const classification = isPiezo ? s.classification_derniere_annee : s.classification_resultat_dern_annee
+    const classColor = CLASSIFICATION_COLORS[classification] ?? '#6b7280'
+    const currentValue = isPiezo ? s.niveau_derniere_annee : s.resultat_moyen_dern_annee
+    const historicMean = isPiezo ? s.niveau_moyen_global : s.resultat_moyen_global
+    const isHauteur = s.grandeur_hydro_principale === 'H'
+    const unit = isPiezo ? 'm NGF' : (isHauteur ? 'm' : 'm³/s')
+
+    // Trend
+    const trendKey = s.tendance_classification
+    const trendConf = trendKey ? TREND_CONFIG[trendKey] : null
+    const slope = isPiezo ? s.slope_niveau : null
+
+    // Min / Max
+    const histMin = isPiezo ? s.niveau_min_absolu : s.resultat_min_global
+    const histMax = isPiezo ? s.niveau_max_absolu : s.resultat_max_global
+
+    // Activity
+    const lastMeasure = s.derniere_mesure
+    const recent = isRecent(lastMeasure)
+
+    // Data volume
+    const dataCount = isPiezo ? s.nb_mesures_total : s.nb_jours_total
+    const dataPeriodYears = s.nb_mois_total ? Math.round(s.nb_mois_total / 12) : null
 
     return (
-      <div className="p-4">
+      <div className="p-4 space-y-3">
         {/* Header */}
-        <div className="flex items-start justify-between mb-4">
+        <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">
-            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium uppercase tracking-wide ${
-              isPiezo ? 'bg-accent-cyan/20 text-accent-cyan' : 'bg-accent-indigo/20 text-accent-indigo'
-            }`}>
-              {isPiezo ? 'Piézométrie' : 'Hydrométrie'}
-            </span>
-            <h3 className="text-base font-semibold text-text-primary mt-2 break-words">{name}</h3>
-            <p className="text-xs text-text-secondary mt-0.5">{dept} &middot; {stationCode}</p>
+            <div className="flex items-center gap-2">
+              <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium uppercase tracking-wide ${
+                isPiezo ? 'bg-accent-cyan/20 text-accent-cyan' : 'bg-accent-indigo/20 text-accent-indigo'
+              }`}>
+                {isPiezo ? 'Piézomètre' : 'Hydrométrie'}
+              </span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                recent ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
+              }`}>
+                {recent ? 'Active' : 'Inactive'}
+              </span>
+            </div>
+            <h3 className="text-base font-semibold text-text-primary mt-1.5 break-words leading-tight">{name}</h3>
+            <p className="text-xs text-text-secondary mt-0.5">{dept} · {stationCode}</p>
+            {!isPiezo && s.libelle_cours_eau && (
+              <p className="text-xs text-accent-indigo/80 mt-0.5 flex items-center gap-1">
+                <Waves className="w-3 h-3" />
+                {s.libelle_cours_eau}
+              </p>
+            )}
           </div>
-          <button onClick={onClose} aria-label="Fermer" className="p-1 hover:bg-bg-hover rounded ml-2">
+          <button onClick={onClose} aria-label="Fermer" className="p-1 hover:bg-bg-hover rounded ml-2 flex-shrink-0">
             <X className="w-4 h-4 text-text-secondary" />
           </button>
         </div>
 
-        {/* Classification + value */}
-        <div className="flex items-center gap-3 mb-4">
-          <ClassificationBadge classification={classification} />
-          {value != null && (
-            <span className="text-sm text-text-primary font-mono">
-              {formatNumber(value)} {unit}
-            </span>
-          )}
-        </div>
-
-        {/* Trend */}
-        {(station as any).tendance_classification && (
-          <p className="text-xs text-text-secondary mb-4">
-            Tendance : <span className="text-text-primary font-medium">{(station as any).tendance_classification}</span>
-          </p>
+        {/* ── Situation actuelle (active stations only) ── */}
+        {recent ? (
+          <div className="bg-white/[0.03] rounded-lg p-3 border border-white/5">
+            <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-2">Situation actuelle</div>
+            <div className="flex items-center justify-between">
+              <ClassificationBadge classification={classification} />
+              {currentValue != null && (
+                <span className="text-lg font-semibold font-mono" style={{ color: classColor }}>
+                  {formatNumber(currentValue)} <span className="text-xs text-text-secondary font-normal">{unit}</span>
+                </span>
+              )}
+            </div>
+            {historicMean != null && currentValue != null && (
+              <div className="mt-2 text-[11px] text-text-secondary">
+                Moy. historique : <span className="text-text-primary font-mono">{formatNumber(historicMean)}</span> {unit}
+                <span className="ml-1.5">
+                  ({currentValue > historicMean ? '+' : ''}{formatNumber(currentValue - historicMean, 2)} {unit})
+                </span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="bg-amber-500/10 rounded-lg p-3 border border-amber-500/20">
+            <div className="text-xs text-amber-400">
+              Station inactive — dernière mesure le {formatDate(lastMeasure)}
+            </div>
+          </div>
         )}
 
-        {/* Metadata grid */}
-        <div className="pt-3 border-t border-white/10 grid grid-cols-2 gap-x-3 gap-y-2 text-xs text-text-secondary mb-4">
-          <div className="flex items-center gap-1.5">
-            <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
-            <span>{formatPeriod((station as any).premiere_mesure, (station as any).derniere_mesure)}</span>
+        {/* ── Tendance (active stations only) ── */}
+        {recent && trendConf && (
+          <div className="bg-white/[0.03] rounded-lg p-3 border border-white/5">
+            <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-2">Tendance</div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <trendConf.icon className="w-4 h-4" style={{ color: trendConf.color }} />
+                <span className="text-sm font-medium" style={{ color: trendConf.color }}>{trendConf.label}</span>
+              </div>
+              {slope != null && (
+                <span className="text-xs font-mono text-text-primary">
+                  {slope > 0 ? '+' : ''}{formatNumber(slope, 3)} m/an
+                </span>
+              )}
+            </div>
+            {s.nb_mois_tendance != null && (
+              <div className="mt-1.5 text-[10px] text-text-secondary">
+                Sur {s.nb_mois_tendance} mois
+                {s.r2_niveau != null && <span> · R² = {formatNumber(s.r2_niveau, 2)}</span>}
+                {s.qualite_tendance && <span> · {s.qualite_tendance}</span>}
+              </div>
+            )}
           </div>
-          <div className="flex items-center gap-1.5">
-            <Database className="w-3.5 h-3.5 flex-shrink-0" />
-            <span>{isPiezo
-              ? `${formatCount((station as any).nb_mesures_total)} mesures`
-              : `${formatCount((station as any).nb_jours_total ?? (station as any).nb_mois_total)} j.`
-            }</span>
+        )}
+
+        {/* ── Historique ── */}
+        <div className="bg-white/[0.03] rounded-lg p-3 border border-white/5">
+          <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-2">Historique</div>
+          <div className="divide-y divide-white/5">
+            {histMin != null && histMax != null && (
+              <InfoRow
+                label="Amplitude"
+                value={<><span className="font-mono">{formatNumber(histMin)}</span> — <span className="font-mono">{formatNumber(histMax)}</span> {unit}</>}
+              />
+            )}
+            {isPiezo && s.profondeur_moyenne_globale != null && (
+              <InfoRow label="Profondeur moy." value={<>{formatNumber(s.profondeur_moyenne_globale)} m</>} />
+            )}
+            {isPiezo && s.amplitude_totale != null && (
+              <InfoRow label="Amplitude totale" value={<>{formatNumber(s.amplitude_totale)} m</>} />
+            )}
+            {!isPiezo && s.resultat_stddev_global != null && (
+              <InfoRow label="Écart-type" value={<>{formatNumber(s.resultat_stddev_global, 2)} {unit}</>} />
+            )}
+            <InfoRow
+              label="Dernière mesure"
+              value={formatDate(lastMeasure)}
+            />
+            <InfoRow
+              label="Données"
+              value={<>{dataCount?.toLocaleString('fr-FR') ?? '—'} {isPiezo ? 'mesures' : 'jours'}</>}
+              sub={dataPeriodYears ? `${dataPeriodYears} ans de recul` : undefined}
+            />
           </div>
-          {isPiezo && (station as any).altitude_station != null && (
-            <div className="flex items-center gap-1.5 col-span-2">
-              <Mountain className="w-3.5 h-3.5 flex-shrink-0" />
-              <span>Alt. {((station as any).altitude_station as number).toFixed(0)} m NGF</span>
-            </div>
-          )}
-          {(station as any).percentile_derniere_annee != null && (
-            <div className="flex items-center gap-1.5 col-span-2">
-              <span className="text-text-secondary">Percentile :</span>
-              <span className="text-text-primary font-medium">{Math.round((station as any).percentile_derniere_annee)}e</span>
-            </div>
-          )}
-          {(station as any).percentile_resultat_dern_annee != null && (
-            <div className="flex items-center gap-1.5 col-span-2">
-              <span className="text-text-secondary">Percentile :</span>
-              <span className="text-text-primary font-medium">{Math.round((station as any).percentile_resultat_dern_annee)}e</span>
-            </div>
-          )}
         </div>
 
-        {/* BDLISA */}
-        {bdlisa?.nature && (
-          <div className="pt-3 border-t border-white/10 flex items-center gap-2 text-xs text-text-secondary mb-4">
-            <span>Nappe :</span>
-            <span className="text-text-primary">{bdlisa.nature}</span>
+        {/* ── Climat (piezo) ── */}
+        {isPiezo && (s.temperature_moyenne_globale != null || s.precipitation_moyenne_mensuelle != null) && (
+          <div className="bg-white/[0.03] rounded-lg p-3 border border-white/5">
+            <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-2">Climat (ERA5)</div>
+            <div className="divide-y divide-white/5">
+              {s.temperature_moyenne_globale != null && (
+                <InfoRow label="Température moy." value={<>{formatNumber(s.temperature_moyenne_globale)} °C</>} />
+              )}
+              {s.precipitation_moyenne_mensuelle != null && (
+                <InfoRow label="Précipitations moy." value={<>{formatNumber(s.precipitation_moyenne_mensuelle)} mm/mois</>} />
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Contexte hydrogéologique ── */}
+        {(bdlisa?.nature || (isPiezo && s.codes_bdlisa) || (!isPiezo && s.code_cours_eau)) && (
+          <div className="bg-white/[0.03] rounded-lg p-3 border border-white/5">
+            <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-2">
+              {isPiezo ? 'Hydrogéologie' : 'Réseau hydrographique'}
+            </div>
+            <div className="divide-y divide-white/5">
+              {isPiezo && bdlisa?.nature && (
+                <InfoRow label="Aquifère" value={bdlisa.nature} />
+              )}
+              {isPiezo && s.codes_bdlisa && (
+                <InfoRow
+                  label="Code BDLISA"
+                  value={
+                    <a href={`https://bdlisa.eaufrance.fr/entite/${s.codes_bdlisa.split(',')[0]}`}
+                       target="_blank" rel="noopener noreferrer"
+                       className="text-accent-cyan hover:underline flex items-center gap-1">
+                      {s.codes_bdlisa.split(',')[0]} <ExternalLink className="w-3 h-3" />
+                    </a>
+                  }
+                />
+              )}
+              {isPiezo && s.altitude_station != null && (
+                <InfoRow label="Altitude station" value={<>{s.altitude_station.toFixed(0)} m NGF</>} />
+              )}
+              {!isPiezo && s.libelle_cours_eau && (
+                <InfoRow label="Cours d'eau" value={s.libelle_cours_eau} />
+              )}
+              {!isPiezo && s.code_cours_eau && (
+                <InfoRow
+                  label="Code Sandre"
+                  value={
+                    <a href={`https://www.sandre.eaufrance.fr/Courdo/Fiche/client/fiche_courdo.php?CdSandwordo=${s.code_cours_eau}`}
+                       target="_blank" rel="noopener noreferrer"
+                       className="text-accent-indigo hover:underline flex items-center gap-1">
+                      {s.code_cours_eau} <ExternalLink className="w-3 h-3" />
+                    </a>
+                  }
+                />
+              )}
+              {!isPiezo && s.grandeur_hydro_principale && (
+                <InfoRow
+                  label="Grandeur mesurée"
+                  value={s.grandeur_hydro_principale === 'Q' ? 'Débit (Q)' : 'Hauteur (H)'}
+                />
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Alerte (active stations only) ── */}
+        {recent && s.niveau_alerte && (
+          <div className="bg-red-500/10 rounded-lg p-3 border border-red-500/20">
+            <div className="flex items-center gap-2">
+              <Droplets className="w-4 h-4 text-red-400" />
+              <span className="text-xs font-medium text-red-400">Alerte : {s.niveau_alerte}</span>
+            </div>
           </div>
         )}
 

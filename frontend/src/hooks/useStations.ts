@@ -5,21 +5,21 @@ import { api } from '../lib/api'
 export function usePiezoStations(filters?: Record<string, string | string[] | undefined>) {
   return useQuery({
     queryKey: ['stations', 'piezo', filters],
-    queryFn: () => api.stations.piezo(filters),
+    queryFn: () => api.piezo.stations(filters),
   })
 }
 
 export function useHydroStations(filters?: Record<string, string | string[] | undefined>) {
   return useQuery({
     queryKey: ['stations', 'hydro', filters],
-    queryFn: () => api.stations.hydro(filters),
+    queryFn: () => api.hydro.stations(filters),
   })
 }
 
 export function usePiezoStationDetail(code: string) {
   return useQuery({
     queryKey: ['station', 'piezo', code],
-    queryFn: () => api.stations.piezoDetail(code),
+    queryFn: () => api.piezo.detail(code),
     enabled: !!code,
   })
 }
@@ -27,7 +27,7 @@ export function usePiezoStationDetail(code: string) {
 export function useHydroStationDetail(code: string) {
   return useQuery({
     queryKey: ['station', 'hydro', code],
-    queryFn: () => api.stations.hydroDetail(code),
+    queryFn: () => api.hydro.detail(code),
     enabled: !!code,
   })
 }
@@ -35,7 +35,7 @@ export function useHydroStationDetail(code: string) {
 export function useStationsGeoJSON() {
   return useQuery({
     queryKey: ['stations', 'geojson'],
-    queryFn: () => api.stations.geojson(),
+    queryFn: () => api.common.geojson(),
     staleTime: 3_600_000, // 1h — matches backend Redis TTL
   })
 }

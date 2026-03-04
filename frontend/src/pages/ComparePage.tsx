@@ -21,7 +21,7 @@ interface SelectedStation {
 export default function ComparePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [searchQuery, setSearchQuery] = useState('')
-  const [normalized, setNormalized] = useState(false)
+  const [normalized, setNormalized] = useState(true)
   const searchRef = useRef<HTMLDivElement>(null)
 
   const { data: piezoStations } = usePiezoStations()
@@ -113,7 +113,7 @@ export default function ComparePage() {
   const queries = useQueries({
     queries: selected.map((s) => ({
       queryKey: ['compare', s.type, 'monthly', s.code],
-      queryFn: () => s.type === 'piezo' ? api.timeseries.piezoMonthly(s.code) : api.timeseries.hydroMonthly(s.code),
+      queryFn: () => s.type === 'piezo' ? api.piezo.monthly(s.code) : api.hydro.monthly(s.code),
       enabled: !!s.code,
     })),
   })

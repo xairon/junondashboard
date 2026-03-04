@@ -4,7 +4,6 @@ import { Layout } from './components/layout/Layout'
 
 const ObservatoryPage = lazy(() => import('./pages/ObservatoryPage'))
 const StationPage = lazy(() => import('./pages/StationPage'))
-const TrendsPage = lazy(() => import('./pages/TrendsPage'))
 const AlertsPage = lazy(() => import('./pages/AlertsPage'))
 const ComparePage = lazy(() => import('./pages/ComparePage'))
 
@@ -36,7 +35,6 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <SuspenseWrapper><ObservatoryPage /></SuspenseWrapper> },
       { path: 'station/*', element: <SuspenseWrapper><StationPage /></SuspenseWrapper> },
-      { path: 'trends', element: <SuspenseWrapper><TrendsPage /></SuspenseWrapper> },
       { path: 'alerts', element: <SuspenseWrapper><AlertsPage /></SuspenseWrapper> },
       { path: 'compare', element: <SuspenseWrapper><ComparePage /></SuspenseWrapper> },
       { path: '*', element: <SuspenseWrapper><NotFoundPage /></SuspenseWrapper> },

@@ -69,25 +69,30 @@ export interface MonthlyHydroData {
 
 export interface YearlyPiezoData {
   annee: number
-  niveau_moyen: number | null
-  niveau_min: number | null
-  niveau_max: number | null
-  amplitude: number | null
+  niveau_moyen_annuel: number | null
+  niveau_min_annuel: number | null
+  niveau_max_annuel: number | null
+  amplitude_annuelle: number | null
   nb_jours_mesures_annuel: number | null
-  classification: string | null
+  classification_niveau_annuel: string | null
   precipitation_totale_annuelle: number | null
   bilan_hydrique_annuel: number | null
   percentile_niveau_historique: number | null
+  niveau_moy_mobile_5ans: number | null
+  temperature_moyenne_annuelle: number | null
 }
 
 export interface YearlyHydroData {
   annee: number
-  resultat_moyen: number | null
-  resultat_min: number | null
-  resultat_max: number | null
-  nb_jours_mesures: number | null
-  classification: string | null
+  resultat_moyen_annuel: number | null
+  resultat_min_annuel: number | null
+  resultat_max_annuel: number | null
+  nb_jours_mesures_annuel: number | null
+  classification_resultat_annuel: string | null
   percentile_resultat_historique: number | null
+  resultat_moy_mobile_5ans: number | null
+  temperature_moyenne_annuelle: number | null
+  precipitation_totale_annuelle: number | null
 }
 
 // Stats types
@@ -127,6 +132,8 @@ export interface Alert {
   departement: string | null
   classification: string | null
   derniere_mesure: string | null
+  alerte_depuis_annee: number | null
+  nb_annees_consecutives: number | null
 }
 
 // ERA5 types
@@ -156,6 +163,7 @@ export interface StationGeoJSONProperties {
   codes_bdlisa?: string | null    // piezo only
   code_district?: string | null   // hydro only — first char of code_cours_eau
   derniere_mesure: string | null
+  nb_observations: number | null  // nb_mesures_total (piezo) or nb_jours_total (hydro)
 }
 
 export interface StationGeoJSONFeature {
@@ -167,6 +175,32 @@ export interface StationGeoJSONFeature {
 export interface StationGeoJSON {
   type: 'FeatureCollection'
   features: StationGeoJSONFeature[]
+}
+
+// Trend data
+export interface PiezoTrend {
+  code_bss: string
+  saison: string | null
+  code_departement: string | null
+  nom_departement: string | null
+  variation_annuelle_m: number | null
+  fiabilite_tendance: number | null
+  nb_points: number | null
+  classification_tendance: string | null
+  projection_variation_5ans_m: number | null
+}
+
+export interface HydroTrend {
+  code_station: string
+  grandeur_hydro_elab: string | null
+  saison: string | null
+  code_departement: string | null
+  nom_departement: string | null
+  variation_annuelle: number | null
+  fiabilite_tendance: number | null
+  nb_points: number | null
+  classification_tendance: string | null
+  projection_variation_5ans: number | null
 }
 
 // Classification

@@ -13,6 +13,7 @@ interface Props {
   unit: string
   precipKey?: string
   percentiles?: StationPercentiles | null
+  resolution?: 'daily' | 'monthly' | 'yearly'
 }
 
 const PERIODS = [
@@ -37,10 +38,14 @@ const ZONE_DOT_COLORS = {
   tres_bas:  '#f87171',
 } as const
 
-export function TimeseriesChart({ data, valueKey, valueLabel, unit, precipKey = 'precipitation_totale', percentiles }: Props) {
+export function TimeseriesChart({ data, valueKey, valueLabel, unit, precipKey = 'precipitation_totale', percentiles, resolution = 'monthly' }: Props) {
+  const isYearly = resolution === 'yearly'
   const [period, setPeriod] = useState<number>(60)
 
+  const dateAccessor = (d: any): string => d.mois ?? d.date ?? String(d.annee)
+
   const filteredData = useMemo(() => {
+    if (isYearly) return data // no period filter for yearly
     if (period === Infinity) return data
     const cutoff = new Date()
     cutoff.setMonth(cutoff.getMonth() - period)
@@ -50,7 +55,7 @@ export function TimeseriesChart({ data, valueKey, valueLabel, unit, precipKey = 
       if (!dateStr) return false
       return new Date(dateStr).getTime() >= cutoffMs
     })
-  }, [data, period])
+  }, [data, period, isYearly])
 
   if (!filteredData.length) {
     return <div className="flex items-center justify-center h-64 text-text-secondary text-sm">Aucune donnée</div>
@@ -60,22 +65,24 @@ export function TimeseriesChart({ data, valueKey, valueLabel, unit, precipKey = 
     <div>
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-text-primary">{valueLabel}</h3>
-        <div className="flex gap-1">
-          {PERIODS.map(({ label, months }) => (
-            <button
-              key={label}
-              onClick={() => setPeriod(months)}
-              aria-pressed={period === months}
-              className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-                period === months
-                  ? 'bg-accent-cyan/20 text-accent-cyan'
-                  : 'text-text-secondary hover:text-text-primary'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        {!isYearly && (
+          <div className="flex gap-1">
+            {PERIODS.map(({ label, months }) => (
+              <button
+                key={label}
+                onClick={() => setPeriod(months)}
+                aria-pressed={period === months}
+                className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                  period === months
+                    ? 'bg-accent-cyan/20 text-accent-cyan'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       <div role="img" aria-label={`Graphique chronologique montrant l'évolution des mesures`}>
         <ResponsiveContainer width="100%" height={320}>
@@ -91,9 +98,10 @@ export function TimeseriesChart({ data, valueKey, valueLabel, unit, precipKey = 
             )}
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
             <XAxis
-              dataKey={(d: any) => d.mois || d.date}
+              dataKey={dateAccessor}
               tick={{ fill: '#9ca3af', fontSize: 11 }}
               tickFormatter={(v: string) => {
+                if (isYearly || /^\d{4}$/.test(v)) return v
                 const d = new Date(v)
                 return `${d.getMonth() + 1}/${String(d.getFullYear()).slice(2)}`
               }}
@@ -115,7 +123,10 @@ export function TimeseriesChart({ data, valueKey, valueLabel, unit, precipKey = 
             />
             <Tooltip
               contentStyle={CHART_TOOLTIP_STYLE}
-              labelFormatter={(v: any) => new Date(v).toLocaleDateString('fr-FR')}
+              labelFormatter={(v: any) => {
+                if (isYearly || /^\d{4}$/.test(String(v))) return String(v)
+                return new Date(v).toLocaleDateString('fr-FR')
+              }}
             />
             <Area
               yAxisId="right"
@@ -136,7 +147,7 @@ export function TimeseriesChart({ data, valueKey, valueLabel, unit, precipKey = 
               connectNulls={false}
             />
             <Brush
-              dataKey={(d: any) => d.mois || d.date}
+              dataKey={dateAccessor}
               height={24}
               stroke="rgba(6,182,212,0.3)"
               fill="#0a0e1a"
