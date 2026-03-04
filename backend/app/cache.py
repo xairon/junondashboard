@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 pool: redis.ConnectionPool | None = None
 try:
     pool = redis.ConnectionPool.from_url(
-        settings.redis_url, decode_responses=True,
+        settings.redis_url, decode_responses=False,
         socket_connect_timeout=5, socket_timeout=10,
     )
 except Exception:

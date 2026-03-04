@@ -894,6 +894,15 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
         map.setLayoutProperty(lineId, 'visibility', isActive ? 'visible' : 'none')
       }
     }
+
+    // Ensure admin layers (regions/depts/bassins/HER) stay ABOVE WFS layers for click priority
+    const adminLayers = [
+      'regions-fill', 'regions-line', 'depts-fill', 'depts-line',
+      'her-fill', 'her-line', 'bassins-fill', 'bassins-line',
+    ]
+    adminLayers.forEach(id => {
+      if (map.getLayer(id)) map.moveLayer(id, 'piezo-clusters')
+    })
   }, [activeWfsLayers, wfsData])
 
   return (

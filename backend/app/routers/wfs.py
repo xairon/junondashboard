@@ -1,12 +1,13 @@
 import asyncio
+import gzip
 import logging
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from starlette.responses import Response
 
-from app.cache import cached_response, get_redis, cache_key
+from app.cache import get_redis, cache_key
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,7 @@ async def _fetch_wfs_raw(layer_id: str, bbox: Optional[str] = None) -> bytes:
 
 @router.get("/{layer_id}")
 async def get_wfs_layer(
+    request: Request,
     layer_id: str,
     bbox: Optional[str] = Query(None, description="Bounding box: min_lon,min_lat,max_lon,max_lat"),
 ):
@@ -82,27 +84,39 @@ async def get_wfs_layer(
 
     key = cache_key(f"wfs_{layer_id}", {"layer_id": layer_id, "bbox": bbox})
     r = get_redis()
+    accepts_gzip = "gzip" in request.headers.get("accept-encoding", "")
 
-    # Try cache first
+    # Try cache first (stored as gzip)
     if r is not None:
         try:
             cached_val = await r.get(key)
             if cached_val:
-                return Response(content=cached_val, media_type="application/json")
+                if accepts_gzip:
+                    return Response(
+                        content=cached_val, media_type="application/json",
+                        headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"},
+                    )
+                return Response(content=gzip.decompress(cached_val), media_type="application/json")
         except Exception as e:
             logger.debug("Redis error: %s", e)
 
     # Fetch raw bytes from SANDRE (no JSON parse/re-serialize)
     raw = await _fetch_wfs_raw(layer_id, bbox)
+    compressed = gzip.compress(raw, compresslevel=6)
 
-    # Store in cache
+    # Store gzipped in cache
     if r is not None:
         try:
-            await r.setex(key, WFS_TTL, raw)
-            logger.info("WFS cached %s (%d bytes)", layer_id, len(raw))
+            await r.setex(key, WFS_TTL, compressed)
+            logger.info("WFS cached %s (%d raw → %d gz)", layer_id, len(raw), len(compressed))
         except Exception as e:
             logger.debug("Redis error: %s", e)
 
+    if accepts_gzip:
+        return Response(
+            content=compressed, media_type="application/json",
+            headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"},
+        )
     return Response(content=raw, media_type="application/json")
 
 
@@ -137,8 +151,9 @@ async def warm_wfs_cache():
 
             try:
                 raw = await _fetch_wfs_raw(layer_id)
-                await r.setex(key, WFS_TTL, raw)
-                logger.info("WFS cache warmed for %s (%d bytes)", layer_id, len(raw))
+                compressed = gzip.compress(raw, compresslevel=6)
+                await r.setex(key, WFS_TTL, compressed)
+                logger.info("WFS cache warmed for %s (%d raw → %d gz)", layer_id, len(raw), len(compressed))
             except Exception as e:
                 logger.warning("WFS warm-up error for %s: %s", layer_id, e)
 
