@@ -1,10 +1,9 @@
 import { useState, useCallback, useMemo } from 'react'
 import { ObservatoryMap } from '../components/map/ObservatoryMap'
-import { StationPopup } from '../components/map/StationPopup'
+import { StationDrawer } from '../components/map/StationDrawer'
 import { KPIBar } from '../components/map/KPIBar'
 import { SearchBar } from '../components/map/SearchBar'
-import { GlobalFilters } from '../components/filters/GlobalFilters'
-import { LayerPanel } from '../components/map/LayerPanel'
+import { RightDrawer } from '../components/map/RightDrawer'
 import { useStationsGeoJSON } from '../hooks/useStations'
 import { useWfsLayer } from '../hooks/useWfsLayer'
 import { LAYER_GROUPS } from '../lib/layerConfig'
@@ -34,13 +33,11 @@ export default function ObservatoryPage() {
   const [showPiezo, setShowPiezo] = useState(true)
   const [showHydro, setShowHydro] = useState(true)
 
-  // Existing static layers
   const [showRegions, setShowRegions] = useState(false)
   const [showDepts, setShowDepts] = useState(false)
   const [showHER, setShowHER] = useState(false)
   const [showSandre, setShowSandre] = useState(false)
 
-  // WFS dynamic layers
   const [activeWfsLayers, setActiveWfsLayers] = useState<Set<WfsLayerId>>(new Set())
 
   const handleToggleWfsLayer = useCallback((layerId: WfsLayerId, groupId: string) => {
@@ -58,7 +55,6 @@ export default function ObservatoryPage() {
     })
   }, [])
 
-  // Fetch WFS data only for active layers
   const regionHydro = useWfsLayer('region-hydro', activeWfsLayers.has('region-hydro'))
   const secteurHydro = useWfsLayer('secteur-hydro', activeWfsLayers.has('secteur-hydro'))
   const sousSecteurHydro = useWfsLayer('sous-secteur-hydro', activeWfsLayers.has('sous-secteur-hydro'))
@@ -133,35 +129,15 @@ export default function ObservatoryPage() {
         onSelect={handleStationClick}
       />
 
-      <GlobalFilters
+      <RightDrawer
+        showPiezo={showPiezo}
+        setShowPiezo={setShowPiezo}
+        showHydro={showHydro}
+        setShowHydro={setShowHydro}
         filters={filters}
         setFilter={setFilter}
         filteredCount={filteredFeatures.length}
         totalCount={geojsonData?.features?.length ?? 0}
-      />
-
-      {/* Station layer toggles */}
-      <div className="absolute top-16 md:top-4 left-4 md:left-[22rem] z-10 flex gap-1">
-        <button
-          onClick={() => setShowPiezo(!showPiezo)}
-          aria-label="Afficher couche piézométrique"
-          aria-pressed={showPiezo}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${showPiezo ? 'bg-accent-cyan/20 text-accent-cyan border-accent-cyan/30' : 'bg-bg-card/90 text-text-secondary border-white/10'}`}
-        >
-          Piezo
-        </button>
-        <button
-          onClick={() => setShowHydro(!showHydro)}
-          aria-label="Afficher couche hydrométrique"
-          aria-pressed={showHydro}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${showHydro ? 'bg-accent-indigo/20 text-accent-indigo border-accent-indigo/30' : 'bg-bg-card/90 text-text-secondary border-white/10'}`}
-        >
-          Hydro
-        </button>
-      </div>
-
-      {/* Layer panel (replaces old Calques) */}
-      <LayerPanel
         showRegions={showRegions}
         setShowRegions={setShowRegions}
         showDepts={showDepts}
@@ -175,7 +151,7 @@ export default function ObservatoryPage() {
       />
 
       {selectedStation && (
-        <StationPopup
+        <StationDrawer
           code={selectedStation.code}
           type={selectedStation.type}
           onClose={() => setSelectedStation(null)}
