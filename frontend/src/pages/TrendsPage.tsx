@@ -11,8 +11,6 @@ import {
   Tooltip, ResponsiveContainer, Cell, Legend,
 } from 'recharts'
 
-const TREND_ORDER = ['HAUSSE_FORTE', 'HAUSSE_SIGNIFICATIVE', 'STABLE', 'BAISSE_SIGNIFICATIVE', 'BAISSE_FORTE']
-
 export default function TrendsPage() {
   const [dataType, setDataType] = useState<'piezo' | 'hydro'>('piezo')
   const [selectedDept, setSelectedDept] = useState<string>('')
@@ -226,7 +224,7 @@ export default function TrendsPage() {
                 />
                 <Tooltip
                   contentStyle={CHART_TOOLTIP_STYLE}
-                  formatter={(val: number, name: string) => [val, CLASSIFICATION_LABELS[name] ?? name]}
+                  formatter={(val: any, name: any) => [val, CLASSIFICATION_LABELS[name] ?? name]}
                 />
                 <Legend
                   wrapperStyle={{ fontSize: 11 }}
@@ -287,7 +285,7 @@ export default function TrendsPage() {
                 />
                 <Tooltip
                   contentStyle={CHART_TOOLTIP_STYLE}
-                  formatter={(val: number) => [`${val}%`, '% Très bas']}
+                  formatter={(val: any) => [`${val}%`, '% Très bas']}
                 />
                 <Bar dataKey="pct_tres_bas" radius={[0, 4, 4, 0]}>
                   {top20Depts.map((d: any, i: number) => (

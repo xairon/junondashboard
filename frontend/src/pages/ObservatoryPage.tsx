@@ -1,5 +1,4 @@
 import { useState, useCallback, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { ObservatoryMap } from '../components/map/ObservatoryMap'
 import { StationPopup } from '../components/map/StationPopup'
 import { KPIBar } from '../components/map/KPIBar'
@@ -11,16 +10,10 @@ import { useWfsLayer } from '../hooks/useWfsLayer'
 import { LAYER_GROUPS } from '../lib/layerConfig'
 import type { StationGeoJSONFeature, WfsLayerId } from '../lib/types'
 import { useFilters } from '../hooks/useFilters'
-import { api } from '../lib/api'
 
 export default function ObservatoryPage() {
   const { filters, setFilter } = useFilters()
   const { data: geojsonData, isError: geojsonError } = useStationsGeoJSON()
-  const { data: nationalStats } = useQuery({
-    queryKey: ['stats', 'national'],
-    queryFn: api.stats.national,
-  })
-
   const filteredFeatures = useMemo<StationGeoJSONFeature[]>(() => {
     const all = geojsonData?.features ?? []
     return all.filter(f => {

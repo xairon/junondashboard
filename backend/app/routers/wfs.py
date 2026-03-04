@@ -15,39 +15,39 @@ WFS_TTL = 86400  # 24h — reference data, rarely changes
 WFS_LAYERS = {
     "region-hydro": {
         "base_url": "https://services.sandre.eaufrance.fr/geo/zonage",
-        "typename": "sa:RegionHydro",
+        "typename": "RegionHydro",
     },
     "secteur-hydro": {
         "base_url": "https://services.sandre.eaufrance.fr/geo/zonage",
-        "typename": "sa:SecteurHydro",
+        "typename": "SecteurHydro",
     },
     "sous-secteur-hydro": {
         "base_url": "https://services.sandre.eaufrance.fr/geo/zonage",
-        "typename": "sa:SousSecteurHydro",
+        "typename": "SousSecteurHydro",
     },
     "zone-hydro": {
         "base_url": "https://services.sandre.eaufrance.fr/geo/zonage",
-        "typename": "sa:ZoneHydro",
+        "typename": "ZoneHydro",
     },
     "cours-eau-1": {
         "base_url": "https://services.sandre.eaufrance.fr/geo/zonage",
-        "typename": "sa:CoursEau1",
+        "typename": "CoursEau1",
     },
     "cours-eau-2": {
         "base_url": "https://services.sandre.eaufrance.fr/geo/zonage",
-        "typename": "sa:CoursEau2",
+        "typename": "CoursEau2",
     },
     "plan-eau": {
         "base_url": "https://services.sandre.eaufrance.fr/geo/zonage",
-        "typename": "sa:PlanEau_FXX",
+        "typename": "PlanEau_FXX",
     },
     "masse-eau-sout": {
         "base_url": "https://services.sandre.eaufrance.fr/geo/MasseDEau_VRAP2022",
-        "typename": "sa:MasseDEauSouterraine_VRAP2022_FXX",
+        "typename": "MasseDEauSouterraine_VRAP2022_FXX",
     },
     "masse-eau-riv": {
         "base_url": "https://services.sandre.eaufrance.fr/geo/MasseDEau_VRAP2022",
-        "typename": "sa:MasseDEauRiviere_VRAP2022_FXX",
+        "typename": "MasseDEauRiviere_VRAP2022_FXX",
     },
 }
 
@@ -68,8 +68,8 @@ async def get_wfs_layer(
             "SERVICE": "WFS",
             "VERSION": "2.0.0",
             "REQUEST": "GetFeature",
-            "TYPENAME": layer["typename"],
-            "OUTPUTFORMAT": "application/json",
+            "TYPENAMES": layer["typename"],
+            "OUTPUTFORMAT": "application/json; subtype=geojson",
             "SRSNAME": "EPSG:4326",
         }
         if bbox:

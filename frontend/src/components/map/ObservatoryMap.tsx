@@ -612,7 +612,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
       if (hydroFeats.length) updateSource(map, 'hydro-stations', hydroFeats)
 
       // --- Click: expand cluster on click ---
-      const handleClusterClick = (sourceId: string) => (e: maplibregl.MapMouseEvent) => {
+      const handleClusterClick = (sourceId: string) => (e: maplibregl.MapMouseEvent & { features?: any[] }) => {
         const features = e.features
         if (!features?.length) return
         const clusterId = features[0].properties?.cluster_id

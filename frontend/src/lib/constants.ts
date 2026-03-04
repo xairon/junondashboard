@@ -5,16 +5,16 @@ export const CLASSIFICATION_COLORS = {
   HAUT: '#3b82f6',
   TRES_HAUT: '#1d4ed8',
   UNKNOWN: '#6b7280',
-} as const satisfies Record<string, string>
+} as const as Record<string, string>
 
-export const CLASSIFICATION_LABELS = {
+export const CLASSIFICATION_LABELS: Record<string, string> = {
   TRES_BAS: 'Très bas',
   BAS: 'Bas',
   NORMAL: 'Normal',
   HAUT: 'Haut',
   TRES_HAUT: 'Très haut',
   UNKNOWN: 'Non classé',
-} as const satisfies Record<string, string>
+}
 
 export const CLASSIFICATION_ORDER = ['TRES_BAS', 'BAS', 'NORMAL', 'HAUT', 'TRES_HAUT'] as const
 

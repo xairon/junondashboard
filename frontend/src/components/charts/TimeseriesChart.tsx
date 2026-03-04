@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import {
-  ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid,
+  ComposedChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Brush, Area, ReferenceArea,
 } from 'recharts'
 import { CHART_TOOLTIP_STYLE } from '../../lib/types'
@@ -115,7 +115,7 @@ export function TimeseriesChart({ data, valueKey, valueLabel, unit, precipKey = 
             />
             <Tooltip
               contentStyle={CHART_TOOLTIP_STYLE}
-              labelFormatter={(v: string) => new Date(v).toLocaleDateString('fr-FR')}
+              labelFormatter={(v: any) => new Date(v).toLocaleDateString('fr-FR')}
             />
             <Area
               yAxisId="right"

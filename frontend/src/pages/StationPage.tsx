@@ -147,7 +147,7 @@ export default function StationPage() {
     !isPiezo ? code : '',
   )
 
-  const station = isPiezo ? piezoStation : hydroStation
+  const station: any = isPiezo ? piezoStation : hydroStation
   const bdlisaLookup = useBdlisaLookup()
   const monthly = isPiezo ? piezoMonthly : hydroMonthly
   const stationLoading = isPiezo ? piezoLoading : hydroLoading

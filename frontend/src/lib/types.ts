@@ -30,6 +30,8 @@ export interface HydroStation {
   nb_jours_total: number | null
   derniere_mesure: string | null
   classification_resultat_dern_annee: string | null
+  resultat_min_global: number | null
+  resultat_max_global: number | null
 }
 
 // Timeseries types

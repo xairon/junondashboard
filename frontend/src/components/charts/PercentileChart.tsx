@@ -71,7 +71,7 @@ export function PercentileChart({ data, type }: Props) {
           />
           <Tooltip
             contentStyle={CHART_TOOLTIP_STYLE}
-            formatter={(value: number) => [`${Math.round(value)}e centile — ${classLabel(value)}`, 'Rang']}
+            formatter={(value: any) => [`${Math.round(value)}e centile — ${classLabel(value)}`, 'Rang']}
           />
           <Bar dataKey="centile" radius={[2, 2, 0, 0]}>
             {chartData.map((entry) => (
