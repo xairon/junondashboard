@@ -2,6 +2,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useMemo, useCallback } from 'react'
 
 export interface Filters {
+  activeOnly?: boolean
   minObservations?: number
   lastMeasurementAfter?: string
   classification?: string[]
@@ -17,6 +18,7 @@ export function useFilters() {
   const [searchParams, setSearchParams] = useSearchParams()
 
 const filters = useMemo<Filters>(() => ({
+    activeOnly: searchParams.get('active_only') === 'true' ? true : undefined,
     minObservations: searchParams.get('min_obs') ? Number(searchParams.get('min_obs')) : undefined,
     lastMeasurementAfter: searchParams.get('last_after') ?? undefined,
     classification: searchParams.getAll('classif').length > 0 ? searchParams.getAll('classif') : undefined,

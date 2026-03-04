@@ -16,6 +16,10 @@ export default function ObservatoryPage() {
   const filteredFeatures = useMemo<StationGeoJSONFeature[]>(() => {
     const all = geojsonData?.features ?? []
     return all.filter(f => {
+      if (filters.activeOnly) {
+        const currentYear = new Date().getFullYear().toString()
+        if (!f.properties.derniere_mesure || !f.properties.derniere_mesure.startsWith(currentYear)) return false
+      }
       if (filters.codeDepartement && f.properties.code_departement !== filters.codeDepartement) return false
       if (filters.classification?.length && !filters.classification.includes(f.properties.classification ?? '')) return false
       if (filters.codeBdlisa && f.properties.type === 'piezo') {
@@ -27,7 +31,7 @@ export default function ObservatoryPage() {
       }
       return true
     })
-  }, [geojsonData, filters.codeDepartement, filters.classification, filters.codeBdlisa, filters.stationCodes])
+  }, [geojsonData, filters.activeOnly, filters.codeDepartement, filters.classification, filters.codeBdlisa, filters.stationCodes])
 
   const [selectedStation, setSelectedStation] = useState<{ code: string; type: 'piezo' | 'hydro' } | null>(null)
   const [showPiezo, setShowPiezo] = useState(true)

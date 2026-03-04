@@ -155,6 +155,7 @@ export interface StationGeoJSONProperties {
   code_departement: string | null
   codes_bdlisa?: string | null    // piezo only
   code_district?: string | null   // hydro only — first char of code_cours_eau
+  derniere_mesure: string | null
 }
 
 export interface StationGeoJSONFeature {

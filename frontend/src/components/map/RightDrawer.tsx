@@ -63,6 +63,7 @@ export function RightDrawer(props: Props) {
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   const hasActiveFilter = (
+    props.filters.activeOnly != null ||
     props.filters.minObservations != null ||
     props.filters.lastMeasurementAfter != null ||
     (props.filters.classification != null && props.filters.classification.length > 0) ||
@@ -70,6 +71,7 @@ export function RightDrawer(props: Props) {
   )
 
   const resetFilters = () => {
+    props.setFilter('active_only', undefined)
     props.setFilter('min_obs', undefined)
     props.setFilter('last_after', undefined)
     props.setFilter('classif', undefined)
@@ -152,6 +154,18 @@ export function RightDrawer(props: Props) {
             : undefined}
         >
           <div className="space-y-3">
+            <label className="flex items-center gap-2 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={props.filters.activeOnly ?? false}
+                onChange={(e) => props.setFilter('active_only', e.target.checked ? 'true' : undefined)}
+                className="w-3.5 h-3.5 accent-accent-cyan rounded"
+              />
+              <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors">
+                Données année en cours uniquement
+              </span>
+            </label>
+
             <div>
               <label className="text-xs text-text-secondary block mb-1">Département</label>
               <input
