@@ -106,7 +106,7 @@ export function RightDrawer(props: Props) {
       {/* Drawer */}
       <div
         className={`absolute top-0 right-0 h-full z-30 w-full sm:w-80 bg-bg-card border-l border-white/10 shadow-2xl transition-transform duration-200 ease-out overflow-y-auto ${
-          drawerOpen ? 'translate-x-0' : 'translate-x-full'
+          drawerOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'
         }`}
       >
         {/* Header */}

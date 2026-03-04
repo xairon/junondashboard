@@ -91,41 +91,62 @@ async def get_wfs_layer(
 
 
 async def warm_wfs_cache():
-    """Pre-fetch all WFS layers into Redis cache at startup."""
+    """Pre-fetch all WFS layers into Redis cache at startup.
+    Uses a Redis lock to prevent multiple workers from warming simultaneously."""
     r = get_redis()
     if r is None:
         logger.info("Redis not available, skipping WFS cache warm-up")
         return
 
-    for layer_id, layer in WFS_LAYERS.items():
-        key = cache_key(f"wfs_{layer_id}", {"layer_id": layer_id, "bbox": None})
-        try:
-            existing = await r.get(key)
-            if existing:
-                logger.info("WFS cache already warm for %s", layer_id)
+    # Acquire lock so only one worker warms the cache
+    lock_key = "hydro:wfs_warm_lock"
+    try:
+        acquired = await r.set(lock_key, "1", nx=True, ex=600)  # 10 min lock
+        if not acquired:
+            logger.info("WFS warm-up already running in another worker, skipping")
+            return
+    except Exception:
+        pass  # If lock fails, proceed anyway
+
+    # Skip very large layers that cause OOM during warm-up (fetched on-demand instead)
+    skip_warm = {"masse-eau-sout", "masse-eau-riv"}
+    try:
+        for layer_id, layer in WFS_LAYERS.items():
+            if layer_id in skip_warm:
                 continue
+            key = cache_key(f"wfs_{layer_id}", {"layer_id": layer_id, "bbox": None})
+            try:
+                existing = await r.exists(key)
+                if existing:
+                    logger.info("WFS cache already warm for %s", layer_id)
+                    continue
+            except Exception:
+                pass
+
+            try:
+                params = {
+                    "SERVICE": "WFS",
+                    "VERSION": "2.0.0",
+                    "REQUEST": "GetFeature",
+                    "TYPENAMES": layer["typename"],
+                    "OUTPUTFORMAT": "application/json; subtype=geojson",
+                    "SRSNAME": "EPSG:4326",
+                }
+                async with httpx.AsyncClient(timeout=120.0) as client:
+                    resp = await client.get(layer["base_url"], params=params)
+                    if resp.status_code == 200:
+                        from app.json_response import FastJSONResponse
+                        body = FastJSONResponse(resp.json()).body
+                        await r.setex(key, WFS_TTL, body)
+                        logger.info("WFS cache warmed for %s (%d bytes)", layer_id, len(body))
+                    else:
+                        logger.warning("WFS warm-up failed for %s: %s", layer_id, resp.status_code)
+            except Exception as e:
+                logger.warning("WFS warm-up error for %s: %s", layer_id, e)
+
+            await asyncio.sleep(1)  # rate-limit requests to SANDRE
+    finally:
+        try:
+            await r.delete(lock_key)
         except Exception:
             pass
-
-        try:
-            params = {
-                "SERVICE": "WFS",
-                "VERSION": "2.0.0",
-                "REQUEST": "GetFeature",
-                "TYPENAMES": layer["typename"],
-                "OUTPUTFORMAT": "application/json; subtype=geojson",
-                "SRSNAME": "EPSG:4326",
-            }
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                resp = await client.get(layer["base_url"], params=params)
-                if resp.status_code == 200:
-                    from app.json_response import FastJSONResponse
-                    body = FastJSONResponse(resp.json()).body
-                    await r.setex(key, WFS_TTL, body)
-                    logger.info("WFS cache warmed for %s (%d bytes)", layer_id, len(body))
-                else:
-                    logger.warning("WFS warm-up failed for %s: %s", layer_id, resp.status_code)
-        except Exception as e:
-            logger.warning("WFS warm-up error for %s: %s", layer_id, e)
-
-        await asyncio.sleep(0.5)  # rate-limit requests to SANDRE

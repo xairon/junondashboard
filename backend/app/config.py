@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     db_name: str = "postgres"
     db_user: str = "postgres"
     db_password: str = ""  # Must be set via environment variable for production
-    redis_url: str = "redis://redis:6379/0"
+    redis_url: str = "redis://juno-redis:6379/0"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     allowed_origins: list[str] = ["http://localhost:5173"]

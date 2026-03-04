@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -21,6 +22,7 @@ async def list_alerts(
     severity: Optional[list[SeverityType]] = Query(None, description="Filter by classification severity"),
     type: Optional[StationType] = Query(None, description="Filter by station type (piezo/hydro)"),
     code_departement: Optional[str] = Query(None, min_length=1, max_length=3, description="Filter by department code"),
+    active_only: bool = Query(True, description="Only stations with data in current year"),
     limit: int = Query(100, ge=1, le=10000),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -31,6 +33,7 @@ async def list_alerts(
         "severity": severity_list,
         "type": type,
         "code_departement": code_departement,
+        "active_only": active_only,
         "limit": limit,
         "offset": offset,
     }
@@ -38,11 +41,15 @@ async def list_alerts(
     async def fetch():
         parts = []
         bind_params = {}
+        year_start = date(date.today().year, 1, 1)
 
         if type is None or type == "piezo":
             piezo_conditions = ["classification_derniere_annee = ANY(:severity)"]
             if code_departement is not None:
                 piezo_conditions.append("code_departement = :dept")
+            if active_only:
+                piezo_conditions.append("derniere_mesure >= :year_start")
+                bind_params["year_start"] = year_start
             piezo_where = " AND ".join(piezo_conditions)
             parts.append(f"""
                 SELECT code_bss AS code, 'piezo' AS type,
@@ -58,6 +65,9 @@ async def list_alerts(
             hydro_conditions = ["classification_resultat_dern_annee = ANY(:severity)"]
             if code_departement is not None:
                 hydro_conditions.append("code_departement = :dept")
+            if active_only:
+                hydro_conditions.append("derniere_mesure >= :year_start")
+                bind_params["year_start"] = year_start
             hydro_where = " AND ".join(hydro_conditions)
             parts.append(f"""
                 SELECT code_station AS code, 'hydro' AS type,

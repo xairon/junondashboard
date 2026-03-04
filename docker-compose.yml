@@ -1,7 +1,7 @@
 services:
-  redis:
+  juno-redis:
     image: redis:7-alpine
-    command: redis-server --maxmemory 1gb --maxmemory-policy allkeys-lru
+    command: redis-server --maxmemory 400mb --maxmemory-policy allkeys-lru
     restart: unless-stopped
     volumes:
       - redis-data:/data
@@ -24,7 +24,7 @@ services:
       - default
       - brgm
     depends_on:
-      redis:
+      juno-redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
@@ -35,7 +35,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 2G
           # cpus: "1.0"
 
   frontend:

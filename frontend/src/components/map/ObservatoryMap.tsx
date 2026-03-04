@@ -8,31 +8,13 @@ import { WFS_LAYER_MAP } from '../../lib/layerConfig'
 const FRANCE_CENTER: [number, number] = [2.5, 46.5]
 const FRANCE_ZOOM = 5.5
 
-// HER-1 hydroecoregion colors (22 regions, grouped by geology/climate)
-const HER1_COLORS: Record<number, string> = {
-  1: '#ef4444',  // Pyrénées
-  2: '#f97316',  // Alpes Internes
-  3: '#eab308',  // Massif Central Sud
-  4: '#84cc16',  // Vosges
-  5: '#22c55e',  // Jura-Préalpes Nord
-  6: '#14b8a6',  // Méditerranéen
-  7: '#06b6d4',  // Préalpes du Sud
-  8: '#3b82f6',  // Cévennes
-  9: '#6366f1',  // Tables Calcaires
-  10: '#8b5cf6', // Côtes Calcaires Est
-  11: '#a855f7', // Causses Aquitains
-  12: '#d946ef', // Armoricain
-  13: '#ec4899', // Landes
-  14: '#f43f5e', // Coteaux Aquitains
-  15: '#fb923c', // Plaine Saône
-  16: '#a78bfa', // Corse
-  17: '#64748b', // Dépressions Sédimentaires
-  18: '#10b981', // Alsace
-  19: '#f59e0b', // Grands Causses
-  20: '#78716c', // Dépôts Argilo-Sableux
-  21: '#be185d', // Massif Central Nord
-  22: '#059669', // Ardennes
-}
+// 20 maximally distinct colors for HER-2 zones (cycled via modulo on zone code)
+const HER2_PALETTE = [
+  '#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231',
+  '#911eb4', '#42d4f4', '#f032e6', '#bfef45', '#fabed4',
+  '#469990', '#dcbeff', '#9A6324', '#800000', '#aaffc3',
+  '#808000', '#ffd8b1', '#000075', '#a9a9a9', '#e6beff',
+]
 
 // SANDRE hydrological district colors (CdBH values from bassins.geojson)
 const SANDRE_DISTRICT_COLORS: Record<string, string> = {
@@ -278,6 +260,16 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
 
   const [tooltip, setTooltip] = useState<{ name: string; x: number; y: number } | null>(null)
 
+  // Refs for show* props — used inside async fetch callbacks to get current value
+  const showRegionsRef = useRef(showRegions)
+  showRegionsRef.current = showRegions
+  const showDeptsRef = useRef(showDepts)
+  showDeptsRef.current = showDepts
+  const showHERRef = useRef(showHER)
+  showHERRef.current = showHER
+  const showSandreRef = useRef(showSandre)
+  showSandreRef.current = showSandre
+
   const activeCodeDeptRef = useRef<string | undefined>(activeCodeDepartement)
 
   const updateSource = useCallback((map: maplibregl.Map, sourceId: string, feats: StationGeoJSONFeature[]) => {
@@ -348,6 +340,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
         .then(data => {
           if (map.getSource('regions')) return
           map.addSource('regions', { type: 'geojson', data, generateId: true })
+          const regVis = showRegionsRef.current ? 'visible' : 'none'
           map.addLayer({
             id: 'regions-fill',
             type: 'fill',
@@ -356,7 +349,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
               'fill-color': '#ffffff',
               'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.10, 0],
             },
-            layout: { visibility: 'none' },
+            layout: { visibility: regVis },
           }, 'piezo-clusters')
           map.addLayer({
             id: 'regions-line',
@@ -366,7 +359,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
               'line-color': 'rgba(255,255,255,0.25)',
               'line-width': 1,
             },
-            layout: { visibility: 'none' },
+            layout: { visibility: regVis },
           }, 'piezo-clusters')
 
           // Hover regions
@@ -406,6 +399,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
           if (map.getSource('departments')) return
           map.addSource('departments', { type: 'geojson', data, generateId: true })
 
+          const deptVis = showDeptsRef.current ? 'visible' : 'none'
           map.addLayer({
             id: 'depts-fill',
             type: 'fill',
@@ -426,7 +420,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
                 0,
               ],
             },
-            layout: { visibility: 'none' },
+            layout: { visibility: deptVis },
           }, 'piezo-clusters')
           map.addLayer({
             id: 'depts-line',
@@ -436,7 +430,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
               'line-color': 'rgba(255,255,255,0.2)',
               'line-width': 0.8,
             },
-            layout: { visibility: 'none' },
+            layout: { visibility: deptVis },
           }, 'piezo-clusters')
 
           // Hover departments
@@ -482,16 +476,17 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
 
           const herColorExpr: maplibregl.ExpressionSpecification = [
             'match',
-            ['get', 'code_her1'],
-            ...Object.entries(HER1_COLORS).flatMap(([k, v]) => [Number(k), v] as [number, string]),
+            ['%', ['get', 'code'], HER2_PALETTE.length],
+            ...HER2_PALETTE.flatMap((color, i) => [i, color] as [number, string]),
             '#94a3b8',
           ] as any
 
+          const herVis = showHERRef.current ? 'visible' : 'none'
           map.addLayer({
             id: 'her-fill',
             type: 'fill',
             source: 'her',
-            layout: { visibility: 'none' },
+            layout: { visibility: herVis },
             paint: {
               'fill-color': herColorExpr,
               'fill-opacity': [
@@ -505,7 +500,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
             id: 'her-line',
             type: 'line',
             source: 'her',
-            layout: { visibility: 'none' },
+            layout: { visibility: herVis },
             paint: {
               'line-color': 'rgba(255,255,255,0.3)',
               'line-width': 0.8,
@@ -556,11 +551,12 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
             '#94a3b8',
           ] as any
 
+          const basVis = showSandreRef.current ? 'visible' : 'none'
           map.addLayer({
             id: 'bassins-fill',
             type: 'fill',
             source: 'bassins',
-            layout: { visibility: 'none' },
+            layout: { visibility: basVis },
             paint: {
               'fill-color': sandreColorExpr,
               'fill-opacity': [
@@ -575,7 +571,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
             id: 'bassins-line',
             type: 'line',
             source: 'bassins',
-            layout: { visibility: 'none' },
+            layout: { visibility: basVis },
             paint: {
               'line-color': sandreColorExpr,
               'line-width': 1.5,

@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -24,6 +25,7 @@ async def get_piezo_trends(
     code_departement: Optional[str] = Query(None, min_length=1, max_length=3),
     classification_tendance: Optional[ClassificationTendanceType] = Query(None, description="Filter by trend classification"),
     fiabilite_min: Optional[float] = Query(None, description="Minimum fiabilite_tendance"),
+    active_only: bool = Query(True, description="Only stations with data in current year"),
     limit: int = Query(500, ge=1, le=5000),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -33,6 +35,7 @@ async def get_piezo_trends(
         "code_departement": code_departement,
         "classification_tendance": classification_tendance,
         "fiabilite_min": fiabilite_min,
+        "active_only": active_only,
         "limit": limit,
         "offset": offset,
     }
@@ -40,6 +43,11 @@ async def get_piezo_trends(
     async def fetch():
         conditions = ["1=1"]
         bind_params = {}
+        if active_only:
+            conditions.append(
+                "code_bss IN (SELECT code_bss FROM gold.dim_piezo_stations WHERE derniere_mesure >= :year_start)"
+            )
+            bind_params["year_start"] = date(date.today().year, 1, 1)
         if saison is not None:
             conditions.append("saison = :saison")
             bind_params["saison"] = saison
@@ -90,6 +98,7 @@ async def get_hydro_trends(
     classification_tendance: Optional[ClassificationTendanceType] = Query(None, description="Filter by trend classification"),
     fiabilite_min: Optional[float] = Query(None, description="Minimum fiabilite_tendance"),
     grandeur_hydro_elab: Optional[str] = Query(None, description="Filter by grandeur_hydro_elab"),
+    active_only: bool = Query(True, description="Only stations with data in current year"),
     limit: int = Query(500, ge=1, le=5000),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -100,6 +109,7 @@ async def get_hydro_trends(
         "classification_tendance": classification_tendance,
         "fiabilite_min": fiabilite_min,
         "grandeur_hydro_elab": grandeur_hydro_elab,
+        "active_only": active_only,
         "limit": limit,
         "offset": offset,
     }
@@ -107,6 +117,11 @@ async def get_hydro_trends(
     async def fetch():
         conditions = ["1=1"]
         bind_params = {}
+        if active_only:
+            conditions.append(
+                "code_station IN (SELECT code_station FROM gold.dim_hydro_stations WHERE derniere_mesure >= :year_start)"
+            )
+            bind_params["year_start"] = date(date.today().year, 1, 1)
         if saison is not None:
             conditions.append("saison = :saison")
             bind_params["saison"] = saison
