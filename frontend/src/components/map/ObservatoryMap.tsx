@@ -292,7 +292,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
     if (!containerRef.current || mapRef.current) return
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+      style: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
       center: FRANCE_CENTER,
       zoom: FRANCE_ZOOM,
       maxBounds: [[-10, 40], [15, 52]],
@@ -305,6 +305,27 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
 
     map.on('load', () => {
       mapLoadedRef.current = true
+
+      // --- Terrain hillshading ---
+      map.addSource('terrain-dem', {
+        type: 'raster-dem',
+        tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+        encoding: 'terrarium',
+        tileSize: 256,
+        maxzoom: 15,
+      })
+
+      map.addLayer({
+        id: 'hillshading',
+        type: 'hillshade',
+        source: 'terrain-dem',
+        paint: {
+          'hillshade-shadow-color': '#473B24',
+          'hillshade-highlight-color': '#ffffff',
+          'hillshade-exaggeration': 0.3,
+          'hillshade-illumination-direction': 315,
+        },
+      }, map.getStyle().layers.find(l => l.type === 'symbol')?.id)
 
       // --- Override basemap labels to French ---
       const style = map.getStyle()
