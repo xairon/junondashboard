@@ -69,7 +69,6 @@ export default function ObservatoryPage() {
   const coursEau1 = useWfsLayer('cours-eau-1', activeWfsLayers.has('cours-eau-1'))
   const coursEau2 = useWfsLayer('cours-eau-2', activeWfsLayers.has('cours-eau-2'))
   const planEau = useWfsLayer('plan-eau', activeWfsLayers.has('plan-eau'))
-  const masseEauSout = useWfsLayer('masse-eau-sout', activeWfsLayers.has('masse-eau-sout'))
   const masseEauRiv = useWfsLayer('masse-eau-riv', activeWfsLayers.has('masse-eau-riv'))
 
   const wfsData = useMemo(() => {
@@ -81,11 +80,10 @@ export default function ObservatoryPage() {
     if (coursEau1.data) d['cours-eau-1'] = coursEau1.data
     if (coursEau2.data) d['cours-eau-2'] = coursEau2.data
     if (planEau.data) d['plan-eau'] = planEau.data
-    if (masseEauSout.data) d['masse-eau-sout'] = masseEauSout.data
     if (masseEauRiv.data) d['masse-eau-riv'] = masseEauRiv.data
     return d
   }, [regionHydro.data, secteurHydro.data, sousSecteurHydro.data, zoneHydro.data,
-      coursEau1.data, coursEau2.data, planEau.data, masseEauSout.data, masseEauRiv.data])
+      coursEau1.data, coursEau2.data, planEau.data, masseEauRiv.data])
 
   const handleStationClick = useCallback((code: string, type: 'piezo' | 'hydro') => {
     setSelectedStation({ code, type })

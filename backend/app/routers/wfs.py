@@ -43,10 +43,6 @@ WFS_LAYERS = {
         "base_url": "https://services.sandre.eaufrance.fr/geo/zonage",
         "typename": "PlanEau_FXX",
     },
-    "masse-eau-sout": {
-        "base_url": "https://services.sandre.eaufrance.fr/geo/MasseDEau_VRAP2022",
-        "typename": "MasseDEauSouterraine_VRAP2022_FXX",
-    },
     "masse-eau-riv": {
         "base_url": "https://services.sandre.eaufrance.fr/geo/MasseDEau_VRAP2022",
         "typename": "MasseDEauRiviere_VRAP2022_FXX",

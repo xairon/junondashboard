@@ -185,7 +185,7 @@ export const CHART_TOOLTIP_STYLE = {
 export type WfsLayerId =
   | 'region-hydro' | 'secteur-hydro' | 'sous-secteur-hydro' | 'zone-hydro'
   | 'cours-eau-1' | 'cours-eau-2' | 'plan-eau'
-  | 'masse-eau-sout' | 'masse-eau-riv'
+  | 'masse-eau-riv'
 
 export interface WfsLayerConfig {
   id: WfsLayerId

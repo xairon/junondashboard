@@ -72,15 +72,6 @@ export const WFS_LAYERS: WfsLayerConfig[] = [
     tooltipFields: ['NomEntiteHydrographique', 'CdEntiteHydrographique', 'Superficie'],
   },
   {
-    id: 'masse-eau-sout',
-    label: 'Masses d\'eau souterraines (DCE)',
-    group: 'hydroeco',
-    minZoom: 7,
-    geometryType: 'polygon',
-    color: '#a78bfa',
-    tooltipFields: ['CdMasseDEau', 'NomMasseDEau'],
-  },
-  {
     id: 'masse-eau-riv',
     label: 'Masses d\'eau cours d\'eau (DCE)',
     group: 'hydroeco',
