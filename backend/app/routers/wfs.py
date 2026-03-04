@@ -4,6 +4,7 @@ from typing import Optional
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query
+from starlette.responses import Response
 
 from app.cache import cached_response, get_redis, cache_key
 
@@ -53,6 +54,28 @@ WFS_LAYERS = {
 }
 
 
+async def _fetch_wfs_raw(layer_id: str, bbox: Optional[str] = None) -> bytes:
+    """Fetch WFS layer as raw bytes (no JSON parsing to avoid OOM on large layers)."""
+    layer = WFS_LAYERS[layer_id]
+    params = {
+        "SERVICE": "WFS",
+        "VERSION": "2.0.0",
+        "REQUEST": "GetFeature",
+        "TYPENAMES": layer["typename"],
+        "OUTPUTFORMAT": "application/json; subtype=geojson",
+        "SRSNAME": "EPSG:4326",
+    }
+    if bbox:
+        params["BBOX"] = bbox
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.get(layer["base_url"], params=params)
+        if resp.status_code != 200:
+            logger.error("WFS error for %s: %s %s", layer_id, resp.status_code, resp.text[:200])
+            raise HTTPException(status_code=502, detail=f"WFS service error for {layer_id}")
+        return resp.content  # raw bytes, no parsing
+
+
 @router.get("/{layer_id}")
 async def get_wfs_layer(
     layer_id: str,
@@ -61,33 +84,30 @@ async def get_wfs_layer(
     if layer_id not in WFS_LAYERS:
         raise HTTPException(status_code=404, detail=f"Unknown layer: {layer_id}")
 
-    layer = WFS_LAYERS[layer_id]
-    cache_params = {"layer_id": layer_id, "bbox": bbox}
+    key = cache_key(f"wfs_{layer_id}", {"layer_id": layer_id, "bbox": bbox})
+    r = get_redis()
 
-    async def fetch():
-        params = {
-            "SERVICE": "WFS",
-            "VERSION": "2.0.0",
-            "REQUEST": "GetFeature",
-            "TYPENAMES": layer["typename"],
-            "OUTPUTFORMAT": "application/json; subtype=geojson",
-            "SRSNAME": "EPSG:4326",
-        }
-        if bbox:
-            params["BBOX"] = bbox
+    # Try cache first
+    if r is not None:
+        try:
+            cached_val = await r.get(key)
+            if cached_val:
+                return Response(content=cached_val, media_type="application/json")
+        except Exception as e:
+            logger.debug("Redis error: %s", e)
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.get(layer["base_url"], params=params)
-            if resp.status_code != 200:
-                logger.error("WFS error for %s: %s %s", layer_id, resp.status_code, resp.text[:200])
-                raise HTTPException(status_code=502, detail=f"WFS service error for {layer_id}")
-            try:
-                return resp.json()
-            except Exception:
-                logger.error("WFS non-JSON response for %s: %s", layer_id, resp.text[:200])
-                raise HTTPException(status_code=502, detail=f"WFS service returned non-JSON for {layer_id}")
+    # Fetch raw bytes from SANDRE (no JSON parse/re-serialize)
+    raw = await _fetch_wfs_raw(layer_id, bbox)
 
-    return await cached_response(f"wfs_{layer_id}", cache_params, WFS_TTL, fetch)
+    # Store in cache
+    if r is not None:
+        try:
+            await r.setex(key, WFS_TTL, raw)
+            logger.info("WFS cached %s (%d bytes)", layer_id, len(raw))
+        except Exception as e:
+            logger.debug("Redis error: %s", e)
+
+    return Response(content=raw, media_type="application/json")
 
 
 async def warm_wfs_cache():
@@ -108,12 +128,8 @@ async def warm_wfs_cache():
     except Exception:
         pass  # If lock fails, proceed anyway
 
-    # Skip very large layers that cause OOM during warm-up (fetched on-demand instead)
-    skip_warm = {"masse-eau-sout", "masse-eau-riv"}
     try:
-        for layer_id, layer in WFS_LAYERS.items():
-            if layer_id in skip_warm:
-                continue
+        for layer_id in WFS_LAYERS:
             key = cache_key(f"wfs_{layer_id}", {"layer_id": layer_id, "bbox": None})
             try:
                 existing = await r.exists(key)
@@ -124,23 +140,9 @@ async def warm_wfs_cache():
                 pass
 
             try:
-                params = {
-                    "SERVICE": "WFS",
-                    "VERSION": "2.0.0",
-                    "REQUEST": "GetFeature",
-                    "TYPENAMES": layer["typename"],
-                    "OUTPUTFORMAT": "application/json; subtype=geojson",
-                    "SRSNAME": "EPSG:4326",
-                }
-                async with httpx.AsyncClient(timeout=120.0) as client:
-                    resp = await client.get(layer["base_url"], params=params)
-                    if resp.status_code == 200:
-                        from app.json_response import FastJSONResponse
-                        body = FastJSONResponse(resp.json()).body
-                        await r.setex(key, WFS_TTL, body)
-                        logger.info("WFS cache warmed for %s (%d bytes)", layer_id, len(body))
-                    else:
-                        logger.warning("WFS warm-up failed for %s: %s", layer_id, resp.status_code)
+                raw = await _fetch_wfs_raw(layer_id)
+                await r.setex(key, WFS_TTL, raw)
+                logger.info("WFS cache warmed for %s (%d bytes)", layer_id, len(raw))
             except Exception as e:
                 logger.warning("WFS warm-up error for %s: %s", layer_id, e)
 

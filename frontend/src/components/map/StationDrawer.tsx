@@ -66,7 +66,7 @@ export function StationDrawer({ code, type, onClose }: Props) {
     const value = isPiezo
       ? (station as any).niveau_derniere_annee
       : (station as any).resultat_moyen_global
-    const unit = isPiezo ? 'm NGF' : 'm\u00b3/s'
+    const unit = isPiezo ? 'm NGF' : 'm³/s'
     const dept = (station as any).nom_departement ?? (station as any).code_departement ?? ''
 
     return (
@@ -77,7 +77,7 @@ export function StationDrawer({ code, type, onClose }: Props) {
             <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium uppercase tracking-wide ${
               isPiezo ? 'bg-accent-cyan/20 text-accent-cyan' : 'bg-accent-indigo/20 text-accent-indigo'
             }`}>
-              {isPiezo ? 'Pi\u00e9zom\u00e9trie' : 'Hydrom\u00e9trie'}
+              {isPiezo ? 'Piézométrie' : 'Hydrométrie'}
             </span>
             <h3 className="text-base font-semibold text-text-primary mt-2 break-words">{name}</h3>
             <p className="text-xs text-text-secondary mt-0.5">{dept} &middot; {stationCode}</p>
@@ -150,7 +150,7 @@ export function StationDrawer({ code, type, onClose }: Props) {
           to={`/station/${type}/${stationCode}`}
           className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg text-sm font-medium bg-accent-cyan/10 text-accent-cyan hover:bg-accent-cyan/20 transition-colors"
         >
-          Voir les d\u00e9tails <ExternalLink className="w-4 h-4" />
+          Voir les détails <ExternalLink className="w-4 h-4" />
         </Link>
       </div>
     )
