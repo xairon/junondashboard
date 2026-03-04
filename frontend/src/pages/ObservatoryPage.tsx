@@ -5,13 +5,16 @@ import { StationPopup } from '../components/map/StationPopup'
 import { KPIBar } from '../components/map/KPIBar'
 import { SearchBar } from '../components/map/SearchBar'
 import { GlobalFilters } from '../components/filters/GlobalFilters'
+import { LayerPanel } from '../components/map/LayerPanel'
 import { useStationsGeoJSON } from '../hooks/useStations'
-import type { StationGeoJSONFeature } from '../lib/types'
+import { useWfsLayer } from '../hooks/useWfsLayer'
+import { LAYER_GROUPS } from '../lib/layerConfig'
+import type { StationGeoJSONFeature, WfsLayerId } from '../lib/types'
 import { useFilters } from '../hooks/useFilters'
 import { api } from '../lib/api'
 
 export default function ObservatoryPage() {
-  const { filters, setFilter, apiParams } = useFilters()
+  const { filters, setFilter } = useFilters()
   const { data: geojsonData, isError: geojsonError } = useStationsGeoJSON()
   const { data: nationalStats } = useQuery({
     queryKey: ['stats', 'national'],
@@ -38,12 +41,55 @@ export default function ObservatoryPage() {
   const [showPiezo, setShowPiezo] = useState(true)
   const [showHydro, setShowHydro] = useState(true)
 
-  // Calques panel state
-  const [showCalques, setShowCalques] = useState(false)
+  // Existing static layers
   const [showRegions, setShowRegions] = useState(false)
   const [showDepts, setShowDepts] = useState(false)
   const [showHER, setShowHER] = useState(false)
   const [showSandre, setShowSandre] = useState(false)
+
+  // WFS dynamic layers
+  const [activeWfsLayers, setActiveWfsLayers] = useState<Set<WfsLayerId>>(new Set())
+
+  const handleToggleWfsLayer = useCallback((layerId: WfsLayerId, groupId: string) => {
+    setActiveWfsLayers(prev => {
+      const next = new Set(prev)
+      const group = LAYER_GROUPS.find(g => g.id === groupId)
+      if (group?.mode === 'radio') {
+        group.layers.forEach(l => next.delete(l.id))
+        if (!prev.has(layerId)) next.add(layerId)
+      } else {
+        if (next.has(layerId)) next.delete(layerId)
+        else next.add(layerId)
+      }
+      return next
+    })
+  }, [])
+
+  // Fetch WFS data only for active layers
+  const regionHydro = useWfsLayer('region-hydro', activeWfsLayers.has('region-hydro'))
+  const secteurHydro = useWfsLayer('secteur-hydro', activeWfsLayers.has('secteur-hydro'))
+  const sousSecteurHydro = useWfsLayer('sous-secteur-hydro', activeWfsLayers.has('sous-secteur-hydro'))
+  const zoneHydro = useWfsLayer('zone-hydro', activeWfsLayers.has('zone-hydro'))
+  const coursEau1 = useWfsLayer('cours-eau-1', activeWfsLayers.has('cours-eau-1'))
+  const coursEau2 = useWfsLayer('cours-eau-2', activeWfsLayers.has('cours-eau-2'))
+  const planEau = useWfsLayer('plan-eau', activeWfsLayers.has('plan-eau'))
+  const masseEauSout = useWfsLayer('masse-eau-sout', activeWfsLayers.has('masse-eau-sout'))
+  const masseEauRiv = useWfsLayer('masse-eau-riv', activeWfsLayers.has('masse-eau-riv'))
+
+  const wfsData = useMemo(() => {
+    const d: Record<string, any> = {}
+    if (regionHydro.data) d['region-hydro'] = regionHydro.data
+    if (secteurHydro.data) d['secteur-hydro'] = secteurHydro.data
+    if (sousSecteurHydro.data) d['sous-secteur-hydro'] = sousSecteurHydro.data
+    if (zoneHydro.data) d['zone-hydro'] = zoneHydro.data
+    if (coursEau1.data) d['cours-eau-1'] = coursEau1.data
+    if (coursEau2.data) d['cours-eau-2'] = coursEau2.data
+    if (planEau.data) d['plan-eau'] = planEau.data
+    if (masseEauSout.data) d['masse-eau-sout'] = masseEauSout.data
+    if (masseEauRiv.data) d['masse-eau-riv'] = masseEauRiv.data
+    return d
+  }, [regionHydro.data, secteurHydro.data, sousSecteurHydro.data, zoneHydro.data,
+      coursEau1.data, coursEau2.data, planEau.data, masseEauSout.data, masseEauRiv.data])
 
   const handleStationClick = useCallback((code: string, type: 'piezo' | 'hydro') => {
     setSelectedStation({ code, type })
@@ -83,6 +129,8 @@ export default function ObservatoryPage() {
         onBassinClick={handleBassinClick}
         activeCodeBassin={filters.codeBassin}
         onSpatialFilter={handleSpatialFilter}
+        activeWfsLayers={activeWfsLayers}
+        wfsData={wfsData}
       />
 
       <SearchBar
@@ -97,7 +145,7 @@ export default function ObservatoryPage() {
         totalCount={geojsonData?.features?.length ?? 0}
       />
 
-      {/* Station layer toggles — Piézo + Hydro */}
+      {/* Station layer toggles */}
       <div className="absolute top-16 md:top-4 left-4 md:left-[22rem] z-10 flex gap-1">
         <button
           onClick={() => setShowPiezo(!showPiezo)}
@@ -117,39 +165,19 @@ export default function ObservatoryPage() {
         </button>
       </div>
 
-      {/* Calques floating panel — right side */}
-      <div className="absolute top-[8.5rem] right-3 z-10">
-        <button
-          onClick={() => setShowCalques(v => !v)}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${showCalques ? 'bg-bg-card border-white/20 text-text-primary' : 'bg-bg-card/80 border-white/10 text-text-secondary hover:text-text-primary'}`}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-          </svg>
-          Calques
-        </button>
-        {showCalques && (
-          <div className="mt-1 bg-bg-card/95 backdrop-blur-sm border border-white/10 rounded-lg p-3 min-w-[10rem]">
-            <p className="text-[10px] font-semibold text-white/50 uppercase tracking-wider mb-2">Couches géographiques</p>
-            {([
-              { label: 'Régions', state: showRegions, setState: setShowRegions },
-              { label: 'Départements', state: showDepts, setState: setShowDepts },
-              { label: 'Hydroécorégions', state: showHER, setState: setShowHER },
-              { label: 'Bassins (SANDRE)', state: showSandre, setState: setShowSandre },
-            ] as const).map(({ label, state, setState }) => (
-              <label key={label} className="flex items-center gap-2 py-1 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={state}
-                  onChange={e => setState(e.target.checked)}
-                  className="w-3.5 h-3.5 accent-accent-cyan rounded"
-                />
-                <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors">{label}</span>
-              </label>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Layer panel (replaces old Calques) */}
+      <LayerPanel
+        showRegions={showRegions}
+        setShowRegions={setShowRegions}
+        showDepts={showDepts}
+        setShowDepts={setShowDepts}
+        showHER={showHER}
+        setShowHER={setShowHER}
+        showSandreDistricts={showSandre}
+        setShowSandreDistricts={setShowSandre}
+        activeWfsLayers={activeWfsLayers}
+        onToggleWfsLayer={handleToggleWfsLayer}
+      />
 
       {selectedStation && (
         <StationPopup

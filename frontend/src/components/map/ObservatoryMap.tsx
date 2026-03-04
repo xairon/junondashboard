@@ -2,6 +2,8 @@ import { useRef, useEffect, useCallback, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { StationGeoJSONFeature } from '../../lib/types'
+import type { WfsLayerId } from '../../lib/types'
+import { WFS_LAYER_MAP } from '../../lib/layerConfig'
 
 const FRANCE_CENTER: [number, number] = [2.5, 46.5]
 const FRANCE_ZOOM = 5.5
@@ -60,6 +62,8 @@ interface Props {
   onRegionClick?: (code: string | null, stationCodes: string[] | null) => void
   onHERClick?: (code: number | null, stationCodes: string[] | null) => void
   onSpatialFilter?: (codes: string[] | null) => void
+  activeWfsLayers?: Set<WfsLayerId>
+  wfsData?: Record<string, any>
 }
 
 /* ------------------------------------------------------------------ */
@@ -241,6 +245,8 @@ export function ObservatoryMap({
   onRegionClick,
   onHERClick,
   onSpatialFilter,
+  activeWfsLayers = new Set() as Set<WfsLayerId>,
+  wfsData,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
@@ -649,7 +655,12 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
         if (stationHits.length > 0) return // clic sur une station, on ne clear pas
 
         // Vérifier si on a cliqué sur un layer spatial VISIBLE
-        const visibleSpatialLayers = ['depts-fill', 'regions-fill', 'her-fill', 'bassins-fill']
+        const visibleSpatialLayers = [
+          'depts-fill', 'regions-fill', 'her-fill', 'bassins-fill',
+          ...Object.entries(WFS_LAYER_MAP)
+            .filter(([, cfg]) => cfg.geometryType === 'polygon')
+            .map(([id]) => `wfs-${id}-fill`),
+        ]
           .filter(id => {
             if (!map.getLayer(id)) return false
             return map.getLayoutProperty(id, 'visibility') === 'visible'
@@ -768,6 +779,105 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
       0.10,
     ])
   }, [activeCodeBassin])
+
+  // Sync WFS layers to map
+  useEffect(() => {
+    if (!mapRef.current || !mapLoadedRef.current) return
+    const map = mapRef.current
+
+    for (const [layerId, config] of Object.entries(WFS_LAYER_MAP)) {
+      const fillId = `wfs-${layerId}-fill`
+      const lineId = `wfs-${layerId}-line`
+      const isActive = activeWfsLayers.has(layerId as WfsLayerId)
+      const data = wfsData?.[layerId]
+
+      if (isActive && data && !map.getSource(`wfs-${layerId}`)) {
+        map.addSource(`wfs-${layerId}`, { type: 'geojson', data, generateId: true })
+
+        if (config.geometryType === 'polygon') {
+          map.addLayer({
+            id: fillId,
+            type: 'fill',
+            source: `wfs-${layerId}`,
+            paint: {
+              'fill-color': config.color,
+              'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.30, 0.12],
+            },
+          }, 'piezo-clusters')
+          map.addLayer({
+            id: lineId,
+            type: 'line',
+            source: `wfs-${layerId}`,
+            paint: {
+              'line-color': config.color,
+              'line-width': 1,
+              'line-opacity': 0.5,
+            },
+          }, 'piezo-clusters')
+        } else {
+          map.addLayer({
+            id: lineId,
+            type: 'line',
+            source: `wfs-${layerId}`,
+            paint: {
+              'line-color': config.color,
+              'line-width': ['interpolate', ['linear'], ['zoom'], 6, 1, 12, 3],
+              'line-opacity': 0.7,
+            },
+          }, 'piezo-clusters')
+        }
+
+        // Hover interaction
+        const hoverLayerId = config.geometryType === 'polygon' ? fillId : lineId
+        let hoveredId: number | null = null
+
+        map.on('mousemove', hoverLayerId, (e) => {
+          if (!e.features?.length) return
+          const feat = e.features[0]
+          if (hoveredId !== null) map.setFeatureState({ source: `wfs-${layerId}`, id: hoveredId }, { hover: false })
+          hoveredId = feat.id as number
+          map.setFeatureState({ source: `wfs-${layerId}`, id: hoveredId }, { hover: true })
+          const parts = config.tooltipFields
+            .map(f => feat.properties?.[f])
+            .filter(Boolean)
+          setTooltip({ name: parts.join(' \u2014 ') || layerId, x: e.point.x, y: e.point.y })
+        })
+        map.on('mouseleave', hoverLayerId, () => {
+          if (hoveredId !== null) map.setFeatureState({ source: `wfs-${layerId}`, id: hoveredId }, { hover: false })
+          hoveredId = null
+          setTooltip(null)
+        })
+        map.on('mouseenter', hoverLayerId, () => { map.getCanvas().style.cursor = 'pointer' })
+        map.on('mouseleave', hoverLayerId, () => { map.getCanvas().style.cursor = '' })
+
+        // Click -> zoom + spatial filter (polygons only)
+        if (config.geometryType === 'polygon') {
+          map.on('click', fillId, (e) => {
+            const feat = e.features?.[0]
+            if (!feat) return
+            const bbox = computeBbox(feat.geometry)
+            map.fitBounds(bbox as maplibregl.LngLatBoundsLike, { padding: 60, duration: 500 })
+            const codes = stationsInGeometry(featuresRef.current, feat.geometry)
+            onSpatialFilterRef.current?.(codes.length > 0 ? codes : null)
+          })
+        }
+      }
+
+      // Update data if source exists
+      if (data && map.getSource(`wfs-${layerId}`)) {
+        const src = map.getSource(`wfs-${layerId}`) as maplibregl.GeoJSONSource
+        src.setData(data)
+      }
+
+      // Toggle visibility
+      if (map.getLayer(fillId)) {
+        map.setLayoutProperty(fillId, 'visibility', isActive ? 'visible' : 'none')
+      }
+      if (map.getLayer(lineId)) {
+        map.setLayoutProperty(lineId, 'visibility', isActive ? 'visible' : 'none')
+      }
+    }
+  }, [activeWfsLayers, wfsData])
 
   return (
     <div className="relative w-full h-full">

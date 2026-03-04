@@ -51,7 +51,7 @@ export const WFS_LAYERS: WfsLayerConfig[] = [
     minZoom: 6,
     geometryType: 'line',
     color: '#60a5fa',
-    tooltipFields: ['NomEntiteHydrworseographique', 'CdEntiteHydrworseographique'],
+    tooltipFields: ['NomEntiteHydrographique', 'CdEntiteHydrographique'],
   },
   {
     id: 'cours-eau-2',
@@ -60,7 +60,7 @@ export const WFS_LAYERS: WfsLayerConfig[] = [
     minZoom: 8,
     geometryType: 'line',
     color: '#93c5fd',
-    tooltipFields: ['NomEntiteHydrworseographique', 'CdEntiteHydrworseographique'],
+    tooltipFields: ['NomEntiteHydrographique', 'CdEntiteHydrographique'],
   },
   {
     id: 'plan-eau',
@@ -69,7 +69,7 @@ export const WFS_LAYERS: WfsLayerConfig[] = [
     minZoom: 8,
     geometryType: 'polygon',
     color: '#38bdf8',
-    tooltipFields: ['NomEntiteHydrworseographique', 'CdEntiteHydrworseographique', 'Superficie'],
+    tooltipFields: ['NomEntiteHydrographique', 'CdEntiteHydrographique', 'Superficie'],
   },
   {
     id: 'masse-eau-sout',

@@ -80,6 +80,10 @@ async def get_wfs_layer(
             if resp.status_code != 200:
                 logger.error("WFS error for %s: %s %s", layer_id, resp.status_code, resp.text[:200])
                 raise HTTPException(status_code=502, detail=f"WFS service error for {layer_id}")
-            return resp.json()
+            try:
+                return resp.json()
+            except Exception:
+                logger.error("WFS non-JSON response for %s: %s", layer_id, resp.text[:200])
+                raise HTTPException(status_code=502, detail=f"WFS service returned non-JSON for {layer_id}")
 
     return await cached_response(f"wfs_{layer_id}", cache_params, WFS_TTL, fetch)

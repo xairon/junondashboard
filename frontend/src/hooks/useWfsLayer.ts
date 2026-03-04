@@ -8,6 +8,6 @@ export function useWfsLayer(layerId: WfsLayerId, enabled: boolean) {
     queryFn: () => api.wfs.layer(layerId),
     enabled,
     staleTime: 24 * 60 * 60 * 1000,
-    gcTime: 60 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
   })
 }
