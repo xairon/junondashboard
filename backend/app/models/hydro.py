@@ -86,3 +86,17 @@ class HydroPercentiles(BaseModel):
     p25: float | None = None
     p75: float | None = None
     p90: float | None = None
+
+
+class HydroSSFI(BaseModel):
+    mois: date
+    value: float | None = None
+    ssfi: float | None = None
+    classification: str = "UNKNOWN"
+
+
+class HydroSPI(BaseModel):
+    mois: date
+    value: float | None = None
+    spi: float | None = None
+    classification: str = "UNKNOWN"

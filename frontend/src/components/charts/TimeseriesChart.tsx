@@ -109,6 +109,7 @@ export function TimeseriesChart({ data, valueKey, valueLabel, unit, precipKey = 
             />
             <YAxis
               yAxisId="left"
+              domain={['auto', 'auto']}
               tick={{ fill: '#9ca3af', fontSize: 11 }}
               stroke="transparent"
               label={{ value: unit, angle: -90, position: 'insideLeft', fill: '#9ca3af', fontSize: 11 }}

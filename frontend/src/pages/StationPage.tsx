@@ -3,10 +3,10 @@ import { useParams, useLocation, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Info } from 'lucide-react'
 import { usePiezoStationDetail, useHydroStationDetail, useBdlisaLookup } from '../hooks/useStations'
-import { usePiezoMonthly, useHydroMonthly, usePiezoDaily, useHydroDaily, usePiezoYearly, useHydroYearly } from '../hooks/useTimeseries'
+import { usePiezoMonthly, useHydroMonthly, usePiezoDaily, useHydroDaily, usePiezoYearly, useHydroYearly, usePiezoSPLI, useHydroSSFI, useSPI } from '../hooks/useTimeseries'
 import { StationKPICards } from '../components/station/StationKPICards'
 import { TimeseriesChart } from '../components/charts/TimeseriesChart'
-import { SeasonalityChart } from '../components/charts/SeasonalityChart'
+import { DroughtIndexChart } from '../components/charts/DroughtIndexChart'
 import { api } from '../lib/api'
 
 type Resolution = 'daily' | 'monthly' | 'yearly'
@@ -120,9 +120,9 @@ export default function StationPage() {
   const { data: piezoStation, isLoading: piezoLoading } = usePiezoStationDetail(isPiezo ? code : '')
   const { data: hydroStation, isLoading: hydroLoading } = useHydroStationDetail(!isPiezo ? code : '')
 
-  // Monthly (always loaded for correlation/seasonality/heatmap)
-  const { data: piezoMonthly, isLoading: piezoMonthlyLoading } = usePiezoMonthly(isPiezo ? code : '')
-  const { data: hydroMonthly, isLoading: hydroMonthlyLoading } = useHydroMonthly(!isPiezo ? code : '')
+  // Monthly (only when resolution is monthly)
+  const { data: piezoMonthly, isLoading: piezoMonthlyLoading } = usePiezoMonthly(isPiezo ? code : '', { enabled: resolution === 'monthly' })
+  const { data: hydroMonthly, isLoading: hydroMonthlyLoading } = useHydroMonthly(!isPiezo ? code : '', { enabled: resolution === 'monthly' })
 
   // Daily (only when resolution === 'daily')
   const { data: piezoDaily, isLoading: piezoDailyLoading } = usePiezoDaily(
@@ -149,6 +149,12 @@ export default function StationPage() {
   const monthly = isPiezo ? piezoMonthly : hydroMonthly
   const stationLoading = isPiezo ? piezoLoading : hydroLoading
   const type = isPiezo ? 'piezo' as const : 'hydro' as const
+
+  // Drought indices (SPLI / SSFI / SPI)
+  const { data: spliData } = usePiezoSPLI(isPiezo ? code : '')
+  const { data: ssfiData } = useHydroSSFI(!isPiezo ? code : '')
+  const { data: spiData } = useSPI(code, type)
+  const droughtData = isPiezo ? spliData : ssfiData
 
   // Percentile thresholds (P10/P25/P75/P90) for reference bands on chart
   const { data: percentiles } = useQuery({
@@ -287,12 +293,25 @@ export default function StationPage() {
                     value={station.code_bss ?? null}
                     mono
                   />
+                  {station.bss_id && (
+                    <MetaRow
+                      label="Identifiant BSS"
+                      value={station.bss_id}
+                      mono
+                    />
+                  )}
+                  <MetaRow
+                    label="Coordonnées"
+                    value={station.latitude != null && station.longitude != null
+                      ? `${station.latitude.toFixed(4)}° N, ${station.longitude.toFixed(4)}° E`
+                      : null}
+                  />
                   <MetaRow
                     label="Code BDLISA"
                     value={station.codes_bdlisa
                       ? (
                         <a
-                          href="https://bdlisa.eaufrance.fr/"
+                          href={`https://bdlisa.eaufrance.fr/hydrogeounit/${station.codes_bdlisa.split(',')[0]}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-blue-400 hover:underline"
@@ -324,6 +343,26 @@ export default function StationPage() {
                       ? `${station.amplitude_totale.toFixed(2)} m`
                       : null}
                   />
+                </div>
+                {/* Liens externes piézo */}
+                <div className="col-span-full flex flex-wrap gap-3 pt-2 border-t border-white/5">
+                  <a href={`https://ades.eaufrance.fr/Fiche/PtEau?code=${station.code_bss}`}
+                     target="_blank" rel="noopener noreferrer"
+                     className="text-[11px] text-blue-400 hover:underline">
+                    ADES ↗
+                  </a>
+                  {station.bss_id && (
+                    <a href={`https://infoterre.brgm.fr/ficheinfoterre/ficheBss.action?id=${station.code_bss}`}
+                       target="_blank" rel="noopener noreferrer"
+                       className="text-[11px] text-blue-400 hover:underline">
+                      InfoTerre ↗
+                    </a>
+                  )}
+                  <a href={`https://hubeau.eaufrance.fr/page/api-piezometrie`}
+                     target="_blank" rel="noopener noreferrer"
+                     className="text-[11px] text-blue-400 hover:underline">
+                    Hub'Eau ↗
+                  </a>
                 </div>
               </>
             ) : (
@@ -361,11 +400,17 @@ export default function StationPage() {
                     mono
                   />
                   <MetaRow
+                    label="Coordonnées"
+                    value={station.latitude_station != null && station.longitude_station != null
+                      ? `${station.latitude_station.toFixed(4)}° N, ${station.longitude_station.toFixed(4)}° E`
+                      : null}
+                  />
+                  <MetaRow
                     label="Code cours d'eau"
                     value={station.code_cours_eau
                       ? (
                         <a
-                          href={`https://www.sandre.eaufrance.fr/urn.php?urn=urn:sandre:data:cours_eau:FRA:cdcoursdeau:${station.code_cours_eau}:2023:::referentiel`}
+                          href={`https://services.sandre.eaufrance.fr/Courdo/Fiche/client/fiche_courdo.php?CdSandre=${station.code_cours_eau}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-blue-400 hover:underline font-mono"
@@ -393,6 +438,24 @@ export default function StationPage() {
                       ? `${station.resultat_max_global.toFixed(2)} ${hydroUnit}`
                       : null}
                   />
+                </div>
+                {/* Liens externes hydro */}
+                <div className="col-span-full flex flex-wrap gap-3 pt-2 border-t border-white/5">
+                  <a href={`https://www.vigicrues.gouv.fr/niv3-station.php?CdStationHydro=${station.code_station}`}
+                     target="_blank" rel="noopener noreferrer"
+                     className="text-[11px] text-blue-400 hover:underline">
+                    VigiCrues ↗
+                  </a>
+                  <a href={`https://hubeau.eaufrance.fr/page/api-hydrometrie`}
+                     target="_blank" rel="noopener noreferrer"
+                     className="text-[11px] text-blue-400 hover:underline">
+                    Hub'Eau ↗
+                  </a>
+                  <a href={`https://www.hydro.eaufrance.fr/stationhydro/${station.code_station}/fiche`}
+                     target="_blank" rel="noopener noreferrer"
+                     className="text-[11px] text-blue-400 hover:underline">
+                    Banque Hydro ↗
+                  </a>
                 </div>
               </>
             )}
@@ -474,16 +537,30 @@ export default function StationPage() {
           </div>
         )}
 
-        {/* Seasonality (use monthly data always) */}
-        {monthly && monthly.length > 0 && (
-          <div className="bg-bg-card border border-white/5 rounded-xl p-5">
-            <SeasonalityChart
-              data={monthly}
-              valueKey={isPiezo ? 'niveau_moyen' : 'resultat_moyen'}
-              label={valueLabel}
-            />
+        {/* Drought Indices (SPLI/SSFI + SPI) */}
+        {(droughtData && droughtData.length > 0) || (spiData && spiData.length > 0) ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {droughtData && droughtData.length > 0 && (
+              <div className="bg-bg-card border border-white/5 rounded-xl p-5">
+                <DroughtIndexChart
+                  data={droughtData}
+                  indexKey={isPiezo ? 'spli' : 'ssfi'}
+                  label={isPiezo ? 'Indice piézométrique standardisé (SPLI/IPS)' : 'Indice de débit (SSFI)'}
+                />
+              </div>
+            )}
+            {spiData && spiData.length > 0 && (
+              <div className="bg-bg-card border border-white/5 rounded-xl p-5">
+                <DroughtIndexChart
+                  data={spiData}
+                  indexKey="spi"
+                  label="Indice de précipitation (SPI)"
+                />
+              </div>
+            )}
           </div>
-        )}
+        ) : null}
+
       </div>
     </div>
   )

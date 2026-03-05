@@ -1,5 +1,23 @@
 import { useSearchParams } from 'react-router-dom'
-import { useMemo, useCallback } from 'react'
+import { useMemo, useCallback, useEffect, useRef } from 'react'
+
+const STORAGE_KEY = 'juno_filters'
+
+/** Persist filter params to sessionStorage */
+function saveToStorage(params: URLSearchParams) {
+  const str = params.toString()
+  if (str) {
+    sessionStorage.setItem(STORAGE_KEY, str)
+  } else {
+    sessionStorage.removeItem(STORAGE_KEY)
+  }
+}
+
+/** Restore filter params from sessionStorage (only relevant keys) */
+function restoreFromStorage(): URLSearchParams | null {
+  const saved = sessionStorage.getItem(STORAGE_KEY)
+  return saved ? new URLSearchParams(saved) : null
+}
 
 export interface Filters {
   activeOnly?: boolean
@@ -16,6 +34,24 @@ export interface Filters {
 
 export function useFilters() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const restored = useRef(false)
+
+  // On mount: if URL has no filter params, restore from sessionStorage
+  useEffect(() => {
+    if (restored.current) return
+    restored.current = true
+    if (searchParams.toString() === '') {
+      const saved = restoreFromStorage()
+      if (saved && saved.toString() !== '') {
+        setSearchParams(saved, { replace: true })
+      }
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persist to sessionStorage whenever params change
+  useEffect(() => {
+    saveToStorage(searchParams)
+  }, [searchParams])
 
 const filters = useMemo<Filters>(() => ({
     activeOnly: searchParams.get('active_only') === 'true' ? true : undefined,

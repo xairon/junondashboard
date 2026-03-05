@@ -17,18 +17,22 @@ class Alert(BaseModel):
 
 class NationalStats(BaseModel):
     total_piezo: int
+    piezo_extremement_bas: int = 0
     piezo_tres_bas: int
     piezo_bas: int
     piezo_normal: int
     piezo_haut: int
     piezo_tres_haut: int
+    piezo_extremement_haut: int = 0
     piezo_no_class: int
     total_hydro: int
+    hydro_extremement_bas: int = 0
     hydro_tres_bas: int
     hydro_bas: int
     hydro_normal: int
     hydro_haut: int
     hydro_tres_haut: int
+    hydro_extremement_haut: int = 0
 
 
 class DepartmentStats(BaseModel):

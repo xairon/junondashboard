@@ -124,10 +124,10 @@ export function StationDrawer({ code, type, onClose }: Props) {
             </div>
             <h3 className="text-base font-semibold text-text-primary mt-1.5 break-words leading-tight">{name}</h3>
             <p className="text-xs text-text-secondary mt-0.5">{dept} · {stationCode}</p>
-            {!isPiezo && s.libelle_cours_eau && (
+            {!isPiezo && s.nom_cours_eau && (
               <p className="text-xs text-accent-indigo/80 mt-0.5 flex items-center gap-1">
                 <Waves className="w-3 h-3" />
-                {s.libelle_cours_eau}
+                {s.nom_cours_eau}
               </p>
             )}
           </div>
@@ -250,7 +250,7 @@ export function StationDrawer({ code, type, onClose }: Props) {
                 <InfoRow
                   label="Code BDLISA"
                   value={
-                    <a href={`https://bdlisa.eaufrance.fr/entite/${s.codes_bdlisa.split(',')[0]}`}
+                    <a href={`https://bdlisa.eaufrance.fr/hydrogeounit/${s.codes_bdlisa.split(',')[0]}`}
                        target="_blank" rel="noopener noreferrer"
                        className="text-accent-cyan hover:underline flex items-center gap-1">
                       {s.codes_bdlisa.split(',')[0]} <ExternalLink className="w-3 h-3" />
@@ -261,14 +261,14 @@ export function StationDrawer({ code, type, onClose }: Props) {
               {isPiezo && s.altitude_station != null && (
                 <InfoRow label="Altitude station" value={<>{s.altitude_station.toFixed(0)} m NGF</>} />
               )}
-              {!isPiezo && s.libelle_cours_eau && (
-                <InfoRow label="Cours d'eau" value={s.libelle_cours_eau} />
+              {!isPiezo && s.nom_cours_eau && (
+                <InfoRow label="Cours d'eau" value={s.nom_cours_eau} />
               )}
               {!isPiezo && s.code_cours_eau && (
                 <InfoRow
                   label="Code Sandre"
                   value={
-                    <a href={`https://www.sandre.eaufrance.fr/Courdo/Fiche/client/fiche_courdo.php?CdSandwordo=${s.code_cours_eau}`}
+                    <a href={`https://services.sandre.eaufrance.fr/Courdo/Fiche/client/fiche_courdo.php?CdSandre=${s.code_cours_eau}`}
                        target="_blank" rel="noopener noreferrer"
                        className="text-accent-indigo hover:underline flex items-center gap-1">
                       {s.code_cours_eau} <ExternalLink className="w-3 h-3" />

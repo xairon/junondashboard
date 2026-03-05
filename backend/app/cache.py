@@ -11,24 +11,31 @@ from app.json_response import FastJSONResponse
 logger = logging.getLogger(__name__)
 
 pool: redis.ConnectionPool | None = None
+_client: redis.Redis | None = None
 try:
     pool = redis.ConnectionPool.from_url(
         settings.redis_url, decode_responses=False,
         socket_connect_timeout=5, socket_timeout=10,
     )
+    _client = redis.Redis(connection_pool=pool)
 except Exception:
     logger.warning("Redis not configured, caching disabled")
 
 
 def get_redis() -> redis.Redis | None:
-    if pool is None:
-        return None
-    return redis.Redis(connection_pool=pool)
+    return _client
+
+
+def _normalize_value(v):
+    if isinstance(v, list):
+        return sorted(str(x) for x in v)
+    return v
 
 
 def cache_key(prefix: str, params: dict) -> str:
-    raw = json.dumps(params, sort_keys=True, default=str)
-    h = hashlib.sha256(raw.encode()).hexdigest()[:16]
+    normalized = {k: _normalize_value(v) for k, v in params.items()}
+    raw = json.dumps(normalized, sort_keys=True, default=str)
+    h = hashlib.sha256(raw.encode()).hexdigest()[:32]
     return f"hydro:{prefix}:{h}"
 
 

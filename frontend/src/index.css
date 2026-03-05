@@ -13,11 +13,13 @@
   --color-text-secondary: #9ca3af;
   --color-accent-cyan: #06b6d4;
   --color-accent-indigo: #6366f1;
+  --color-status-extremement-bas: #991b1b;
   --color-status-tres-bas: #ef4444;
   --color-status-bas: #f97316;
   --color-status-normal: #10b981;
   --color-status-haut: #3b82f6;
   --color-status-tres-haut: #1d4ed8;
+  --color-status-extremement-haut: #312e81;
   --color-precip: oklch(0.7 0.15 230 / 0.3);
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 }

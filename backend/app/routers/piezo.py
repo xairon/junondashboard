@@ -6,10 +6,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cache import cached_response
+from app.classification import get_classification_lookup
 from app.database import get_db
 from app.models.piezo import (
-    PiezoDaily, PiezoMonthly, PiezoPercentiles, PiezoStation, PiezoTrend, PiezoYearly,
+    PiezoDaily, PiezoMonthly, PiezoPercentiles, PiezoSPLI, PiezoSPI, PiezoStation, PiezoTrend, PiezoYearly,
 )
+from app.drought import compute_spli, compute_spi
 
 router = APIRouter(prefix="/api/v1/piezo", tags=["piezo"])
 
@@ -21,7 +23,7 @@ YEARLY_TTL = 86400
 PERCENTILES_TTL = 86400
 TRENDS_TTL = 43200
 
-ClassificationType = Literal["TRES_BAS", "BAS", "NORMAL", "HAUT", "TRES_HAUT"]
+ClassificationType = Literal["EXTREMEMENT_BAS", "TRES_BAS", "BAS", "NORMAL", "HAUT", "TRES_HAUT", "EXTREMEMENT_HAUT"]
 SaisonType = Literal["annuel", "printemps", "ete", "automne", "hiver"]
 ClassificationTendanceType = Literal[
     "HAUSSE_FORTE", "HAUSSE_SIGNIFICATIVE", "STABLE", "BAISSE_SIGNIFICATIVE", "BAISSE_FORTE"
@@ -48,6 +50,7 @@ async def list_stations(
     }
 
     async def fetch():
+        lookup = await get_classification_lookup()
         conditions = ["1=1"]
         bind = {}
 
@@ -57,7 +60,8 @@ async def list_stations(
         if last_measurement_after is not None:
             conditions.append("derniere_mesure >= :last_after")
             bind["last_after"] = last_measurement_after
-        if classification is not None:
+        if classification is not None and not lookup:
+            # Fallback: filter by DB column (5-class)
             conditions.append("classification_derniere_annee = ANY(:classification)")
             bind["classification"] = classification
         if code_departement is not None:
@@ -95,7 +99,19 @@ async def list_stations(
             ORDER BY code_bss
         """
         result = await db.execute(text(query), bind)
-        return [dict(row) for row in result.mappings().all()]
+        rows = [dict(row) for row in result.mappings().all()]
+
+        # Overlay computed classifications
+        if lookup:
+            for row in rows:
+                computed = lookup.get("piezo", {}).get(row["code_bss"])
+                if computed and computed != "UNKNOWN":
+                    row["classification_derniere_annee"] = computed
+            # Post-filter by classification if requested (7-class)
+            if classification is not None:
+                rows = [r for r in rows if r["classification_derniere_annee"] in classification]
+
+        return rows
 
     return await cached_response("piezo_list", params, LIST_TTL, fetch)
 
@@ -247,6 +263,71 @@ async def get_yearly(
     return await cached_response("piezo_yearly", params, YEARLY_TTL, fetch)
 
 
+SPLI_TTL = 86400
+
+
+@router.get("/stations/{code_bss:path}/spli", response_model=list[PiezoSPLI])
+async def get_spli(
+    code_bss: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Compute SPLI (IPS) — Standardized Piezometric Level Index (BRGM methodology)."""
+
+    async def fetch():
+        query = """
+            SELECT mois, niveau_moyen
+            FROM gold.fct_monthly_chroniques
+            WHERE code_bss = :code AND niveau_moyen IS NOT NULL
+            ORDER BY mois
+        """
+        result = await db.execute(text(query), {"code": code_bss})
+        rows = result.mappings().all()
+        if not rows:
+            exists = await db.execute(
+                text("SELECT 1 FROM gold.dim_piezo_stations WHERE code_bss = :code"), {"code": code_bss}
+            )
+            if exists.first() is None:
+                raise HTTPException(404, f"Piezo station {code_bss} not found")
+            return []
+
+        months = [str(r["mois"]) for r in rows]
+        values = [float(r["niveau_moyen"]) if r["niveau_moyen"] is not None else None for r in rows]
+        return compute_spli(months, values)
+
+    return await cached_response("piezo_spli", {"code_bss": code_bss}, SPLI_TTL, fetch)
+
+
+@router.get("/stations/{code_bss:path}/spi", response_model=list[PiezoSPI])
+async def get_spi(
+    code_bss: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Compute Standardized Precipitation Index (SPI) from monthly precipitation."""
+
+    async def fetch():
+        query = """
+            SELECT mois, precipitation_totale
+            FROM gold.fct_monthly_chroniques
+            WHERE code_bss = :code AND precipitation_totale IS NOT NULL
+            ORDER BY mois
+        """
+        result = await db.execute(text(query), {"code": code_bss})
+        rows = result.mappings().all()
+        if not rows:
+            exists = await db.execute(
+                text("SELECT 1 FROM gold.dim_piezo_stations WHERE code_bss = :code"), {"code": code_bss}
+            )
+            if exists.first() is None:
+                raise HTTPException(404, f"Piezo station {code_bss} not found")
+            return []
+
+        months = [str(r["mois"]) for r in rows]
+        values = [float(r["precipitation_totale"]) if r["precipitation_totale"] is not None else None for r in rows]
+        return compute_spi(months, values)
+
+    return await cached_response("piezo_spi", {"code_bss": code_bss}, SPLI_TTL, fetch)
+
+
 @router.get("/stations/{code_bss:path}", response_model=PiezoStation)
 async def get_station(
     code_bss: str,
@@ -270,7 +351,13 @@ async def get_station(
         row = result.mappings().first()
         if not row:
             raise HTTPException(404, f"Piezo station {code_bss} not found")
-        return dict(row)
+        row_dict = dict(row)
+        lookup = await get_classification_lookup()
+        if lookup:
+            computed = lookup.get("piezo", {}).get(code_bss)
+            if computed and computed != "UNKNOWN":
+                row_dict["classification_derniere_annee"] = computed
+        return row_dict
 
     return await cached_response("piezo_detail", {"code_bss": code_bss}, DETAIL_TTL, fetch)
 
@@ -293,32 +380,31 @@ async def get_trends(
     async def fetch():
         conditions = ["1=1"]
         bind = {}
+        join_clause = ""
         if active_only:
-            conditions.append(
-                "code_bss IN (SELECT code_bss FROM gold.dim_piezo_stations WHERE derniere_mesure >= :recent_cutoff)"
-            )
+            join_clause = " JOIN gold.dim_piezo_stations ds ON t.code_bss = ds.code_bss AND ds.derniere_mesure >= :recent_cutoff"
             bind["recent_cutoff"] = date.today() - timedelta(days=90)
         if saison is not None:
-            conditions.append("saison = :saison")
+            conditions.append("t.saison = :saison")
             bind["saison"] = saison
         if code_departement is not None:
-            conditions.append("code_departement = :dept")
+            conditions.append("t.code_departement = :dept")
             bind["dept"] = code_departement
         if classification_tendance is not None:
-            conditions.append("classification_tendance = :classif")
+            conditions.append("t.classification_tendance = :classif")
             bind["classif"] = classification_tendance
         if fiabilite_min is not None:
-            conditions.append("fiabilite_tendance >= :fiab_min")
+            conditions.append("t.fiabilite_tendance >= :fiab_min")
             bind["fiab_min"] = fiabilite_min
 
         where = " AND ".join(conditions)
         query = f"""
-            SELECT code_bss, saison, code_departement, nom_departement,
-                   variation_annuelle_m, fiabilite_tendance, nb_points,
-                   classification_tendance, projection_variation_5ans_m
-            FROM gold.agg_station_trends
+            SELECT t.code_bss, t.saison, t.code_departement, t.nom_departement,
+                   t.variation_annuelle_m, t.fiabilite_tendance, t.nb_points,
+                   t.classification_tendance, t.projection_variation_5ans_m
+            FROM gold.agg_station_trends t{join_clause}
             WHERE {where}
-            ORDER BY code_bss
+            ORDER BY t.code_bss
         """
         result = await db.execute(text(query), bind)
         return [dict(row) for row in result.mappings().all()]

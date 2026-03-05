@@ -109,14 +109,15 @@ export default function ObservatoryPage() {
     })
   }, [])
 
-  const regionHydro = useWfsLayer('region-hydro', activeWfsLayers.has('region-hydro'))
-  const secteurHydro = useWfsLayer('secteur-hydro', activeWfsLayers.has('secteur-hydro'))
-  const sousSecteurHydro = useWfsLayer('sous-secteur-hydro', activeWfsLayers.has('sous-secteur-hydro'))
-  const zoneHydro = useWfsLayer('zone-hydro', activeWfsLayers.has('zone-hydro'))
-  const coursEau1 = useWfsLayer('cours-eau-1', activeWfsLayers.has('cours-eau-1'))
-  const coursEau2 = useWfsLayer('cours-eau-2', activeWfsLayers.has('cours-eau-2'))
-  const planEau = useWfsLayer('plan-eau', activeWfsLayers.has('plan-eau'))
-  const masseEauRiv = useWfsLayer('masse-eau-riv', activeWfsLayers.has('masse-eau-riv'))
+  // Preload all WFS layers on mount so toggling is instant
+  const regionHydro = useWfsLayer('region-hydro', true)
+  const secteurHydro = useWfsLayer('secteur-hydro', true)
+  const sousSecteurHydro = useWfsLayer('sous-secteur-hydro', true)
+  const zoneHydro = useWfsLayer('zone-hydro', true)
+  const coursEau1 = useWfsLayer('cours-eau-1', true)
+  const coursEau2 = useWfsLayer('cours-eau-2', true)
+  const planEau = useWfsLayer('plan-eau', true)
+  const masseEauRiv = useWfsLayer('masse-eau-riv', true)
 
   const wfsData = useMemo(() => {
     const raw: Record<string, any> = {}

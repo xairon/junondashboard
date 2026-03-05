@@ -20,6 +20,7 @@ interface SelectedStation {
 
 export default function ComparePage() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const [searchInput, setSearchInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [normalized, setNormalized] = useState(true)
   const searchRef = useRef<HTMLDivElement>(null)
@@ -27,11 +28,17 @@ export default function ComparePage() {
   const { data: piezoStations } = usePiezoStations()
   const { data: hydroStations } = useHydroStations()
 
+  // Debounce search input -> searchQuery
+  useEffect(() => {
+    const timer = setTimeout(() => setSearchQuery(searchInput), 300)
+    return () => clearTimeout(timer)
+  }, [searchInput])
+
   // Click-outside handler for search dropdown
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
-        setSearchQuery('')
+        setSearchInput('')
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -87,7 +94,7 @@ export default function ComparePage() {
   const addStation = useCallback((s: SelectedStation) => {
     const newSelected = [...selected, s]
     updateUrl(newSelected)
-    setSearchQuery('')
+    setSearchInput('')
   }, [selected, updateUrl])
 
   const removeStation = useCallback((index: number) => {
@@ -198,8 +205,8 @@ export default function ComparePage() {
                 <Search className="w-3.5 h-3.5 text-text-secondary" />
                 <input
                   type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
                   placeholder="Ajouter..."
                   className="bg-transparent text-sm text-text-primary placeholder:text-text-secondary focus:outline-none w-32"
                   aria-label="Rechercher une station à comparer"

@@ -1,22 +1,26 @@
 export const CLASSIFICATION_COLORS = {
+  EXTREMEMENT_BAS: '#991b1b',
   TRES_BAS: '#ef4444',
   BAS: '#f97316',
   NORMAL: '#10b981',
   HAUT: '#3b82f6',
   TRES_HAUT: '#1d4ed8',
+  EXTREMEMENT_HAUT: '#312e81',
   UNKNOWN: '#6b7280',
 } as const as Record<string, string>
 
 export const CLASSIFICATION_LABELS: Record<string, string> = {
+  EXTREMEMENT_BAS: 'Extrêmement bas',
   TRES_BAS: 'Très bas',
   BAS: 'Bas',
   NORMAL: 'Normal',
   HAUT: 'Haut',
   TRES_HAUT: 'Très haut',
+  EXTREMEMENT_HAUT: 'Extrêmement haut',
   UNKNOWN: 'Non classé',
 }
 
-export const CLASSIFICATION_ORDER = ['TRES_BAS', 'BAS', 'NORMAL', 'HAUT', 'TRES_HAUT'] as const
+export const CLASSIFICATION_ORDER = ['EXTREMEMENT_BAS', 'TRES_BAS', 'BAS', 'NORMAL', 'HAUT', 'TRES_HAUT', 'EXTREMEMENT_HAUT'] as const
 
 export const TREND_LABELS: Record<string, string> = {
   HAUSSE_FORTE: 'Hausse forte',

@@ -18,11 +18,20 @@ const escapeCSV = (v: string | number | null | undefined): string => {
 type SortKey = 'name' | 'dept' | 'derniere_mesure' | 'depuis'
 type SortDir = 'asc' | 'desc'
 
+function SortIndicator({ column, sortKey, sortDir }: { column: SortKey; sortKey: SortKey | null; sortDir: SortDir }) {
+  if (sortKey !== column) return <span className="text-text-secondary/30 ml-1">&#x25B2;</span>
+  return sortDir === 'asc'
+    ? <span className="text-accent-cyan ml-1">&#x25B2;</span>
+    : <span className="text-accent-cyan ml-1">&#x25BC;</span>
+}
+
 const SEVERITY_TABS = [
-  { key: 'TRES_BAS', label: 'Très bas', description: 'Niveau critique — intervention potentielle' },
-  { key: 'BAS', label: 'Bas', description: 'Niveau en dessous de la normale — surveillance' },
-  { key: 'HAUT', label: 'Haut', description: 'Niveau au-dessus de la normale' },
-  { key: 'TRES_HAUT', label: 'Très haut', description: 'Niveau très élevé — risque de crue' },
+  { key: 'EXTREMEMENT_BAS', label: 'Extr. bas', description: 'Niveau extrêmement bas (< -1.75σ) — situation exceptionnelle' },
+  { key: 'TRES_BAS', label: 'Très bas', description: 'Niveau très bas (-1.75 à -1.28σ) — intervention potentielle' },
+  { key: 'BAS', label: 'Bas', description: 'Niveau bas (-1.28 à -0.84σ) — surveillance' },
+  { key: 'HAUT', label: 'Haut', description: 'Niveau haut (0.84 à 1.28σ) — au-dessus de la normale' },
+  { key: 'TRES_HAUT', label: 'Très haut', description: 'Niveau très haut (1.28 à 1.75σ) — risque de crue' },
+  { key: 'EXTREMEMENT_HAUT', label: 'Extr. haut', description: 'Niveau extrêmement haut (> 1.75σ) — situation exceptionnelle' },
 ] as const
 
 export default function AlertsPage() {
@@ -34,7 +43,7 @@ export default function AlertsPage() {
   // Fetch ALL alerts (all severities) in one call
   const { data: alerts, isLoading, isError } = useQuery({
     queryKey: ['alerts', 'all'],
-    queryFn: () => api.common.alerts({ severity: ['TRES_BAS', 'BAS', 'HAUT', 'TRES_HAUT'] }),
+    queryFn: () => api.common.alerts({ severity: ['EXTREMEMENT_BAS', 'TRES_BAS', 'BAS', 'HAUT', 'TRES_HAUT', 'EXTREMEMENT_HAUT'] }),
   })
 
   const handleSort = useCallback((key: SortKey) => {
@@ -114,13 +123,6 @@ export default function AlertsPage() {
     a.download = 'alertes_stations.csv'
     a.click()
     URL.revokeObjectURL(url)
-  }
-
-  const SortIndicator = ({ column }: { column: SortKey }) => {
-    if (sortKey !== column) return <span className="text-text-secondary/30 ml-1">&#x25B2;</span>
-    return sortDir === 'asc'
-      ? <span className="text-accent-cyan ml-1">&#x25B2;</span>
-      : <span className="text-accent-cyan ml-1">&#x25BC;</span>
   }
 
   if (isError) {
@@ -224,25 +226,25 @@ export default function AlertsPage() {
                         className="px-4 py-3 text-left text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary"
                         onClick={() => handleSort('name')}
                       >
-                        Station <SortIndicator column="name" />
+                        Station <SortIndicator column="name" sortKey={sortKey} sortDir={sortDir} />
                       </th>
                       <th
                         className="px-4 py-3 text-left text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary"
                         onClick={() => handleSort('dept')}
                       >
-                        Département <SortIndicator column="dept" />
+                        Département <SortIndicator column="dept" sortKey={sortKey} sortDir={sortDir} />
                       </th>
                       <th
                         className="px-4 py-3 text-left text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary"
                         onClick={() => handleSort('derniere_mesure')}
                       >
-                        Dernière mesure <SortIndicator column="derniere_mesure" />
+                        Dernière mesure <SortIndicator column="derniere_mesure" sortKey={sortKey} sortDir={sortDir} />
                       </th>
                       <th
                         className="px-4 py-3 text-left text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary"
                         onClick={() => handleSort('depuis')}
                       >
-                        Depuis <SortIndicator column="depuis" />
+                        Depuis <SortIndicator column="depuis" sortKey={sortKey} sortDir={sortDir} />
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary w-12"></th>
                     </tr>

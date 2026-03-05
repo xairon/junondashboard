@@ -15,6 +15,23 @@ router = APIRouter(prefix="/api/v1/wfs", tags=["wfs"])
 
 WFS_TTL = 86400  # 24h — reference data, rarely changes
 
+_http_client: httpx.AsyncClient | None = None
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None:
+        _http_client = httpx.AsyncClient(timeout=120.0)
+    return _http_client
+
+
+async def close_http_client():
+    global _http_client
+    if _http_client is not None:
+        await _http_client.aclose()
+        _http_client = None
+
+
 WFS_LAYERS = {
     "region-hydro": {
         "base_url": "https://services.sandre.eaufrance.fr/geo/zonage",
@@ -65,12 +82,12 @@ async def _fetch_wfs_raw(layer_id: str, bbox: Optional[str] = None) -> bytes:
     if bbox:
         params["BBOX"] = bbox
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.get(layer["base_url"], params=params)
-        if resp.status_code != 200:
-            logger.error("WFS error for %s: %s %s", layer_id, resp.status_code, resp.text[:200])
-            raise HTTPException(status_code=502, detail=f"WFS service error for {layer_id}")
-        return resp.content  # raw bytes, no parsing
+    client = _get_http_client()
+    resp = await client.get(layer["base_url"], params=params)
+    if resp.status_code != 200:
+        logger.error("WFS error for %s: %s %s", layer_id, resp.status_code, resp.text[:200])
+        raise HTTPException(status_code=502, detail=f"WFS service error for {layer_id}")
+    return resp.content  # raw bytes, no parsing
 
 
 @router.get("/{layer_id}")

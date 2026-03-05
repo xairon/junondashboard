@@ -21,7 +21,7 @@ export interface HydroStation {
   libelle_station: string | null
   libelle_site: string | null
   code_cours_eau: string | null
-  libelle_cours_eau: string | null
+  nom_cours_eau: string | null
   latitude_station: number | null
   longitude_station: number | null
   code_departement: string | null
@@ -95,21 +95,47 @@ export interface YearlyHydroData {
   precipitation_totale_annuelle: number | null
 }
 
+// Drought index types
+export interface SPIDataPoint {
+  mois: string
+  value: number | null
+  spi: number | null
+  classification: string
+}
+
+export interface SPLIDataPoint {
+  mois: string
+  value: number | null
+  spli: number | null
+  classification: string
+}
+
+export interface SSFIDataPoint {
+  mois: string
+  value: number | null
+  ssfi: number | null
+  classification: string
+}
+
 // Stats types
 export interface NationalStats {
   total_piezo: number
+  piezo_extremement_bas: number
   piezo_tres_bas: number
   piezo_bas: number
   piezo_normal: number
   piezo_haut: number
   piezo_tres_haut: number
+  piezo_extremement_haut: number
   piezo_no_class: number
   total_hydro: number
+  hydro_extremement_bas: number
   hydro_tres_bas: number
   hydro_bas: number
   hydro_normal: number
   hydro_haut: number
   hydro_tres_haut: number
+  hydro_extremement_haut: number
 }
 
 export interface DepartmentStats {
@@ -204,7 +230,7 @@ export interface HydroTrend {
 }
 
 // Classification
-export type Classification = 'TRES_BAS' | 'BAS' | 'NORMAL' | 'HAUT' | 'TRES_HAUT' | 'UNKNOWN'
+export type Classification = 'EXTREMEMENT_BAS' | 'TRES_BAS' | 'BAS' | 'NORMAL' | 'HAUT' | 'TRES_HAUT' | 'EXTREMEMENT_HAUT' | 'UNKNOWN'
 export type TrendClassification = 'HAUSSE_FORTE' | 'HAUSSE_SIGNIFICATIVE' | 'STABLE' | 'BAISSE_SIGNIFICATIVE' | 'BAISSE_FORTE'
 
 // Chart tooltip style

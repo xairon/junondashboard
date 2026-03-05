@@ -97,3 +97,17 @@ class PiezoPercentiles(BaseModel):
     p25: float | None = None
     p75: float | None = None
     p90: float | None = None
+
+
+class PiezoSPLI(BaseModel):
+    mois: date
+    value: float | None = None
+    spli: float | None = None
+    classification: str = "UNKNOWN"
+
+
+class PiezoSPI(BaseModel):
+    mois: date
+    value: float | None = None
+    spi: float | None = None
+    classification: str = "UNKNOWN"

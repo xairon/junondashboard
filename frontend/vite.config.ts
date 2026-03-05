@@ -18,9 +18,11 @@ export default defineConfig({
           'vendor-map': ['maplibre-gl'],
           'vendor-charts': ['recharts'],
           'vendor-query': ['@tanstack/react-query'],
+          'vendor-icons': ['lucide-react'],
         },
       },
     },
+    sourcemap: false,
   },
   server: {
     proxy: {

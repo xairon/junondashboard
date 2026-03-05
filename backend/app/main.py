@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cache import get_redis, pool as redis_pool
+from app.classification import warm_classification_cache
 from app.config import settings
 from app.database import engine, get_db
 from app.json_response import FastJSONResponse
@@ -25,9 +26,11 @@ async def lifespan(app: FastAPI):
             logging.getLogger(__name__).info("Redis connection OK")
         except Exception as e:
             logging.getLogger(__name__).warning("Redis ping failed: %s", e)
-    # Warm WFS cache in background (don't block startup)
+    # Warm caches in background (don't block startup)
     asyncio.create_task(wfs.warm_wfs_cache())
+    asyncio.create_task(warm_classification_cache())
     yield
+    await wfs.close_http_client()
     if redis_pool is not None:
         await redis_pool.aclose()
     await engine.dispose()

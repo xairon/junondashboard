@@ -6,10 +6,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cache import cached_response
+from app.classification import get_classification_lookup
 from app.database import get_db
 from app.models.hydro import (
-    HydroDaily, HydroMonthly, HydroPercentiles, HydroStation, HydroTrend, HydroYearly,
+    HydroDaily, HydroMonthly, HydroPercentiles, HydroSPI, HydroSSFI, HydroStation, HydroTrend, HydroYearly,
 )
+from app.drought import compute_spi, compute_ssfi
 
 router = APIRouter(prefix="/api/v1/hydro", tags=["hydro"])
 
@@ -21,7 +23,7 @@ YEARLY_TTL = 86400
 PERCENTILES_TTL = 86400
 TRENDS_TTL = 43200
 
-ClassificationType = Literal["TRES_BAS", "BAS", "NORMAL", "HAUT", "TRES_HAUT"]
+ClassificationType = Literal["EXTREMEMENT_BAS", "TRES_BAS", "BAS", "NORMAL", "HAUT", "TRES_HAUT", "EXTREMEMENT_HAUT"]
 SaisonType = Literal["annuel", "printemps", "ete", "automne", "hiver"]
 ClassificationTendanceType = Literal[
     "HAUSSE_FORTE", "HAUSSE_SIGNIFICATIVE", "STABLE", "BAISSE_SIGNIFICATIVE", "BAISSE_FORTE"
@@ -50,6 +52,7 @@ async def list_stations(
     }
 
     async def fetch():
+        lookup = await get_classification_lookup()
         conditions = ["1=1"]
         bind = {}
 
@@ -59,7 +62,7 @@ async def list_stations(
         if last_measurement_after is not None:
             conditions.append("derniere_mesure >= :last_after")
             bind["last_after"] = last_measurement_after
-        if classification is not None:
+        if classification is not None and not lookup:
             conditions.append("classification_resultat_dern_annee = ANY(:classification)")
             bind["classification"] = classification
         if code_departement is not None:
@@ -98,7 +101,17 @@ async def list_stations(
             ORDER BY code_station
         """
         result = await db.execute(text(query), bind)
-        return [dict(row) for row in result.mappings().all()]
+        rows = [dict(row) for row in result.mappings().all()]
+
+        if lookup:
+            for row in rows:
+                computed = lookup.get("hydro", {}).get(row["code_station"])
+                if computed and computed != "UNKNOWN":
+                    row["classification_resultat_dern_annee"] = computed
+            if classification is not None:
+                rows = [r for r in rows if r["classification_resultat_dern_annee"] in classification]
+
+        return rows
 
     return await cached_response("hydro_list", params, LIST_TTL, fetch)
 
@@ -249,6 +262,71 @@ async def get_yearly(
     return await cached_response("hydro_yearly", params, YEARLY_TTL, fetch)
 
 
+SSFI_TTL = 86400
+
+
+@router.get("/stations/{code_station}/ssfi", response_model=list[HydroSSFI])
+async def get_ssfi(
+    code_station: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Compute Standardized Streamflow Index (SSFI) from monthly data."""
+
+    async def fetch():
+        query = """
+            SELECT mois, resultat_moyen
+            FROM gold.fct_monthly_hydro
+            WHERE code_station = :code AND resultat_moyen IS NOT NULL
+            ORDER BY mois
+        """
+        result = await db.execute(text(query), {"code": code_station})
+        rows = result.mappings().all()
+        if not rows:
+            exists = await db.execute(
+                text("SELECT 1 FROM gold.dim_hydro_stations WHERE code_station = :code"), {"code": code_station}
+            )
+            if exists.first() is None:
+                raise HTTPException(404, f"Hydro station {code_station} not found")
+            return []
+
+        months = [str(r["mois"]) for r in rows]
+        values = [float(r["resultat_moyen"]) if r["resultat_moyen"] is not None else None for r in rows]
+        return compute_ssfi(months, values)
+
+    return await cached_response("hydro_ssfi", {"code_station": code_station}, SSFI_TTL, fetch)
+
+
+@router.get("/stations/{code_station}/spi", response_model=list[HydroSPI])
+async def get_spi(
+    code_station: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Compute Standardized Precipitation Index (SPI) from monthly precipitation."""
+
+    async def fetch():
+        query = """
+            SELECT mois, precipitation_totale
+            FROM gold.fct_monthly_hydro
+            WHERE code_station = :code AND precipitation_totale IS NOT NULL
+            ORDER BY mois
+        """
+        result = await db.execute(text(query), {"code": code_station})
+        rows = result.mappings().all()
+        if not rows:
+            exists = await db.execute(
+                text("SELECT 1 FROM gold.dim_hydro_stations WHERE code_station = :code"), {"code": code_station}
+            )
+            if exists.first() is None:
+                raise HTTPException(404, f"Hydro station {code_station} not found")
+            return []
+
+        months = [str(r["mois"]) for r in rows]
+        values = [float(r["precipitation_totale"]) if r["precipitation_totale"] is not None else None for r in rows]
+        return compute_spi(months, values)
+
+    return await cached_response("hydro_spi", {"code_station": code_station}, SSFI_TTL, fetch)
+
+
 @router.get("/stations/{code_station}", response_model=HydroStation)
 async def get_station(
     code_station: str,
@@ -270,7 +348,13 @@ async def get_station(
         row = result.mappings().first()
         if not row:
             raise HTTPException(404, f"Hydro station {code_station} not found")
-        return dict(row)
+        row_dict = dict(row)
+        lookup = await get_classification_lookup()
+        if lookup:
+            computed = lookup.get("hydro", {}).get(code_station)
+            if computed and computed != "UNKNOWN":
+                row_dict["classification_resultat_dern_annee"] = computed
+        return row_dict
 
     return await cached_response("hydro_detail", {"code_station": code_station}, DETAIL_TTL, fetch)
 
@@ -295,35 +379,34 @@ async def get_trends(
     async def fetch():
         conditions = ["1=1"]
         bind = {}
+        join_clause = ""
         if active_only:
-            conditions.append(
-                "code_station IN (SELECT code_station FROM gold.dim_hydro_stations WHERE derniere_mesure >= :recent_cutoff)"
-            )
+            join_clause = " JOIN gold.dim_hydro_stations ds ON t.code_station = ds.code_station AND ds.derniere_mesure >= :recent_cutoff"
             bind["recent_cutoff"] = date.today() - timedelta(days=90)
         if saison is not None:
-            conditions.append("saison = :saison")
+            conditions.append("t.saison = :saison")
             bind["saison"] = saison
         if code_departement is not None:
-            conditions.append("code_departement = :dept")
+            conditions.append("t.code_departement = :dept")
             bind["dept"] = code_departement
         if classification_tendance is not None:
-            conditions.append("classification_tendance = :classif")
+            conditions.append("t.classification_tendance = :classif")
             bind["classif"] = classification_tendance
         if fiabilite_min is not None:
-            conditions.append("fiabilite_tendance >= :fiab_min")
+            conditions.append("t.fiabilite_tendance >= :fiab_min")
             bind["fiab_min"] = fiabilite_min
         if grandeur_hydro_elab is not None:
-            conditions.append("grandeur_hydro_elab = :grandeur")
+            conditions.append("t.grandeur_hydro_elab = :grandeur")
             bind["grandeur"] = grandeur_hydro_elab
 
         where = " AND ".join(conditions)
         query = f"""
-            SELECT code_station, grandeur_hydro_elab, saison, code_departement, nom_departement,
-                   variation_annuelle, fiabilite_tendance, nb_points,
-                   classification_tendance, projection_variation_5ans
-            FROM gold.agg_hydro_trends
+            SELECT t.code_station, t.grandeur_hydro_elab, t.saison, t.code_departement, t.nom_departement,
+                   t.variation_annuelle, t.fiabilite_tendance, t.nb_points,
+                   t.classification_tendance, t.projection_variation_5ans
+            FROM gold.agg_hydro_trends t{join_clause}
             WHERE {where}
-            ORDER BY code_station
+            ORDER BY t.code_station
         """
         result = await db.execute(text(query), bind)
         return [dict(row) for row in result.mappings().all()]

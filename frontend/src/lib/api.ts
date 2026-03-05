@@ -7,7 +7,8 @@ import type {
   YearlyPiezoData, YearlyHydroData,
   PiezoTrend, HydroTrend,
   StationPercentiles,
-  StationGeoJSON
+  StationGeoJSON,
+  SPIDataPoint, SPLIDataPoint, SSFIDataPoint,
 } from './types'
 
 async function fetchJson<T>(path: string, params?: Record<string, string | string[] | undefined>): Promise<T> {
@@ -46,6 +47,8 @@ export const api = {
     monthly: (code: string) => fetchJson<MonthlyPiezoData[]>(`/piezo/stations/${code}/monthly`),
     yearly: (code: string) => fetchJson<YearlyPiezoData[]>(`/piezo/stations/${code}/yearly`),
     trends: (params?: Record<string, string | undefined>) => fetchJson<PiezoTrend[]>('/piezo/trends', params),
+    spli: (code: string) => fetchJson<SPLIDataPoint[]>(`/piezo/stations/${code}/spli`),
+    spi: (code: string) => fetchJson<SPIDataPoint[]>(`/piezo/stations/${code}/spi`),
   },
   hydro: {
     stations: (params?: Record<string, string | string[] | undefined>) =>
@@ -58,6 +61,8 @@ export const api = {
     monthly: (code: string) => fetchJson<MonthlyHydroData[]>(`/hydro/stations/${code}/monthly`),
     yearly: (code: string) => fetchJson<YearlyHydroData[]>(`/hydro/stations/${code}/yearly`),
     trends: (params?: Record<string, string | undefined>) => fetchJson<HydroTrend[]>('/hydro/trends', params),
+    ssfi: (code: string) => fetchJson<SSFIDataPoint[]>(`/hydro/stations/${code}/ssfi`),
+    spi: (code: string) => fetchJson<SPIDataPoint[]>(`/hydro/stations/${code}/spi`),
   },
   common: {
     geojson: (stationType?: 'piezo' | 'hydro' | 'all') =>
