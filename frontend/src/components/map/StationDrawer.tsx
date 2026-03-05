@@ -3,7 +3,7 @@ import { X, ExternalLink, TrendingUp, TrendingDown, Minus, Droplets, Waves } fro
 import { ClassificationBadge } from '../station/ClassificationBadge'
 import { formatNumber, formatDate } from '../../lib/utils'
 import { CLASSIFICATION_COLORS } from '../../lib/constants'
-import { usePiezoStationDetail, useHydroStationDetail, useBdlisaLookup } from '../../hooks/useStations'
+import { usePiezoStationDetail, useHydroStationDetail, useBdlisaLookup, usePiezoSiblings, useHydroSiblings } from '../../hooks/useStations'
 
 interface Props {
   code: string
@@ -68,6 +68,12 @@ export function StationDrawer({ code, type, onClose }: Props) {
   const hydroQuery = useHydroStationDetail(!isPiezo ? code : '')
   const { data: station, isLoading } = isPiezo ? piezoQuery : hydroQuery
   const bdlisaLookup = useBdlisaLookup()
+
+  const stationCode = isPiezo
+    ? (station as any)?.code_bss ?? code
+    : (station as any)?.code_station ?? code
+  const piezoSiblings = usePiezoSiblings(isPiezo ? stationCode : '')
+  const hydroSiblings = useHydroSiblings(!isPiezo ? stationCode : '')
 
   const content = (() => {
     if (isLoading || !station) return <DrawerSkeleton onClose={onClose} />
@@ -282,6 +288,91 @@ export function StationDrawer({ code, type, onClose }: Props) {
                   value={s.grandeur_hydro_principale === 'Q' ? 'Débit (Q)' : 'Hauteur (H)'}
                 />
               )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Stations associées ── */}
+        {isPiezo && piezoSiblings.data && piezoSiblings.data.siblings.length > 0 && (
+          <div className="bg-white/[0.03] rounded-lg p-3 border border-white/5">
+            <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-2">
+              Nappe souterraine · {piezoSiblings.data.nb_stations} stations
+            </div>
+            <p className="text-xs text-text-primary mb-2 font-medium">
+              {bdlisa?.nature ? `${bdlisa.nature} — ` : ''}{piezoSiblings.data.code_bdlisa}
+            </p>
+            <div className="space-y-1 max-h-32 overflow-y-auto">
+              {piezoSiblings.data.siblings.slice(0, 5).map(sib => (
+                <Link
+                  key={sib.code_bss}
+                  to={`/station/piezo/${sib.code_bss}`}
+                  className="flex items-center justify-between py-1 px-1.5 rounded hover:bg-bg-hover text-xs transition-colors"
+                >
+                  <span className="text-text-primary truncate">{sib.nom_commune || sib.code_bss}</span>
+                  <span className="flex items-center gap-1.5 shrink-0 ml-2">
+                    {sib.distance_km != null && (
+                      <span className="text-[10px] text-text-secondary">{sib.distance_km} km</span>
+                    )}
+                    {sib.classification && (
+                      <span
+                        className="w-2 h-2 rounded-full"
+                        style={{ backgroundColor: CLASSIFICATION_COLORS[sib.classification] ?? '#6b7280' }}
+                        title={sib.classification}
+                      />
+                    )}
+                  </span>
+                </Link>
+              ))}
+            </div>
+            {piezoSiblings.data.siblings.length > 5 && (
+              <Link
+                to={`/station/piezo/${stationCode}`}
+                className="text-[10px] text-accent-cyan hover:underline mt-1.5 block"
+              >
+                Voir les {piezoSiblings.data.nb_stations} stations →
+              </Link>
+            )}
+          </div>
+        )}
+
+        {!isPiezo && hydroSiblings.data && hydroSiblings.data.siblings.length > 0 && (
+          <div className="bg-white/[0.03] rounded-lg p-3 border border-white/5">
+            <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-2">
+              Site hydrométrique
+            </div>
+            <p className="text-xs text-text-primary mb-2 font-medium">
+              {hydroSiblings.data.libelle_site || hydroSiblings.data.code_site}
+            </p>
+            <div className="space-y-1">
+              {hydroSiblings.data.siblings.map(sib => (
+                <Link
+                  key={sib.code_station}
+                  to={`/station/hydro/${sib.code_station}`}
+                  className="flex items-center justify-between py-1 px-1.5 rounded hover:bg-bg-hover text-xs transition-colors"
+                >
+                  <span className="text-text-primary truncate">
+                    {sib.libelle_station || sib.code_station}
+                  </span>
+                  <span className="flex items-center gap-1.5 shrink-0 ml-2">
+                    {sib.grandeur_hydro_principale && (
+                      <span className={`text-[10px] px-1 py-0.5 rounded font-medium ${
+                        sib.grandeur_hydro_principale.startsWith('Q')
+                          ? 'bg-accent-cyan/20 text-accent-cyan'
+                          : 'bg-accent-indigo/20 text-accent-indigo'
+                      }`}>
+                        {sib.grandeur_hydro_principale.startsWith('Q') ? 'Débit' : 'Hauteur'}
+                      </span>
+                    )}
+                    {sib.classification && (
+                      <span
+                        className="w-2 h-2 rounded-full"
+                        style={{ backgroundColor: CLASSIFICATION_COLORS[sib.classification] ?? '#6b7280' }}
+                        title={sib.classification}
+                      />
+                    )}
+                  </span>
+                </Link>
+              ))}
             </div>
           </div>
         )}

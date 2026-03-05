@@ -7,8 +7,9 @@ import type {
   YearlyPiezoData, YearlyHydroData,
   PiezoTrend, HydroTrend,
   StationPercentiles,
-  StationGeoJSON,
+  StationGeoJSON, ClassificationTimeline,
   SPIDataPoint, SPLIDataPoint, SSFIDataPoint,
+  PiezoBasinSiblings, HydroSiteSiblings,
 } from './types'
 
 async function fetchJson<T>(path: string, params?: Record<string, string | string[] | undefined>): Promise<T> {
@@ -49,6 +50,7 @@ export const api = {
     trends: (params?: Record<string, string | undefined>) => fetchJson<PiezoTrend[]>('/piezo/trends', params),
     spli: (code: string) => fetchJson<SPLIDataPoint[]>(`/piezo/stations/${code}/spli`),
     spi: (code: string) => fetchJson<SPIDataPoint[]>(`/piezo/stations/${code}/spi`),
+    siblings: (code: string) => fetchJson<PiezoBasinSiblings>(`/piezo/stations/${encodeURIComponent(code)}/siblings`),
   },
   hydro: {
     stations: (params?: Record<string, string | string[] | undefined>) =>
@@ -63,6 +65,7 @@ export const api = {
     trends: (params?: Record<string, string | undefined>) => fetchJson<HydroTrend[]>('/hydro/trends', params),
     ssfi: (code: string) => fetchJson<SSFIDataPoint[]>(`/hydro/stations/${code}/ssfi`),
     spi: (code: string) => fetchJson<SPIDataPoint[]>(`/hydro/stations/${code}/spi`),
+    siblings: (code: string) => fetchJson<HydroSiteSiblings>(`/hydro/stations/${code}/siblings`),
   },
   common: {
     geojson: (stationType?: 'piezo' | 'hydro' | 'all') =>
@@ -71,6 +74,7 @@ export const api = {
       fetchJson<Alert[]>('/common/alerts', params),
     statsNational: () => fetchJson<NationalStats>('/common/stats/national'),
     statsDepartments: () => fetchJson<DepartmentStats[]>('/common/stats/departments'),
+    classificationTimeline: () => fetchJson<ClassificationTimeline>('/common/classifications/timeline'),
   },
   era5: {
     grid: () => fetchJson<ERA5GridPoint[]>('/era5/grid'),

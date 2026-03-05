@@ -16,6 +16,29 @@ const HER2_PALETTE = [
   '#808000', '#ffd8b1', '#000075', '#a9a9a9', '#e6beff',
 ]
 
+// Region colors — 13 distinct hues for metropolitan France
+const REGION_COLORS: Record<string, string> = {
+  '11': '#ef4444', // Île-de-France — red
+  '24': '#f59e0b', // Centre-Val de Loire — amber
+  '27': '#84cc16', // Bourgogne-Franche-Comté — lime
+  '28': '#06b6d4', // Normandie — cyan
+  '32': '#6366f1', // Hauts-de-France — indigo
+  '44': '#a78bfa', // Grand Est — violet
+  '52': '#22c55e', // Pays de la Loire — green
+  '53': '#3b82f6', // Bretagne — blue
+  '75': '#f97316', // Nouvelle-Aquitaine — orange
+  '76': '#ec4899', // Occitanie — pink
+  '84': '#14b8a6', // Auvergne-Rhône-Alpes — teal
+  '93': '#e879f9', // Provence-Alpes-Côte d'Azur — fuchsia
+  '94': '#78716c', // Corse — stone
+}
+
+// Department colors — cycle through a 12-color palette using modulo on dept code
+const DEPT_PALETTE = [
+  '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e', '#14b8a6',
+  '#06b6d4', '#3b82f6', '#6366f1', '#a78bfa', '#ec4899', '#e879f9',
+]
+
 // SANDRE hydrological district colors (CdBH values from bassins.geojson)
 const SANDRE_DISTRICT_COLORS: Record<string, string> = {
   'A':  '#64748b', // Escaut-Somme — slate
@@ -33,6 +56,7 @@ interface Props {
   showPiezo?: boolean
   showHydro?: boolean
   onStationClick?: (code: string, type: 'piezo' | 'hydro') => void
+  onEmptyClick?: () => void
   onDeptClick?: (code: string | null) => void
   activeCodeDepartement?: string
   showRegions?: boolean
@@ -47,6 +71,10 @@ interface Props {
   onBboxChange?: (bbox: [number, number, number, number] | null) => void
   activeWfsLayers?: Set<WfsLayerId>
   wfsData?: Record<string, any>
+  highlightedBasinCode?: string | null
+  selectedStationCode?: string | null
+  flyToBbox?: [number, number, number, number] | null
+  onFlyToComplete?: () => void
 }
 
 /* ------------------------------------------------------------------ */
@@ -63,13 +91,70 @@ function featuresToGeoJSON(features: StationGeoJSONFeature[]) {
         properties: {
           code: f.properties.code,
           type: f.properties.type,
+          classification: f.properties.classification ?? '',
+          codes_bdlisa: f.properties.codes_bdlisa ?? '',
         },
       })),
   }
 }
 
-function buildColorExpression(): maplibregl.ExpressionSpecification {
-  return ['match', ['get', 'type'], 'piezo', '#22d3ee', 'hydro', '#6366f1', '#6b7280']
+function buildClassificationColorExpression(): maplibregl.ExpressionSpecification {
+  return [
+    'match', ['get', 'classification'],
+    'EXTREMEMENT_BAS', '#991b1b',
+    'TRES_BAS', '#ef4444',
+    'BAS', '#f97316',
+    'NORMAL', '#10b981',
+    'HAUT', '#3b82f6',
+    'TRES_HAUT', '#1d4ed8',
+    'EXTREMEMENT_HAUT', '#312e81',
+    '#6b7280', // fallback: gray for unknown/no classification
+  ]
+}
+
+/* ------------------------------------------------------------------ */
+/*  SDF icon generation for station markers                           */
+/* ------------------------------------------------------------------ */
+
+/** Create an SDF-compatible ImageData from a drawing function */
+function createSdfIcon(draw: (ctx: CanvasRenderingContext2D, size: number) => void, size = 40): ImageData {
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  draw(ctx, size)
+  return ctx.getImageData(0, 0, size, size)
+}
+
+/** Piezo: diamond shape — standard cartographic symbol for wells/boreholes */
+function drawPiezoDiamond(ctx: CanvasRenderingContext2D, size: number) {
+  const cx = size / 2, cy = size / 2
+  const rx = size * 0.38, ry = size * 0.44
+  ctx.beginPath()
+  ctx.moveTo(cx, cy - ry)   // top
+  ctx.lineTo(cx + rx, cy)   // right
+  ctx.lineTo(cx, cy + ry)   // bottom
+  ctx.lineTo(cx - rx, cy)   // left
+  ctx.closePath()
+  ctx.fillStyle = '#fff'
+  ctx.fill()
+}
+
+/** Hydro: water drop shape — represents surface water flow */
+function drawHydroDrop(ctx: CanvasRenderingContext2D, size: number) {
+  const cx = size / 2
+  const r = size * 0.32
+  const bottomY = size * 0.62
+  const tipY = size * 0.12
+
+  ctx.beginPath()
+  // Bottom circle
+  ctx.arc(cx, bottomY, r, 0.15 * Math.PI, 0.85 * Math.PI)
+  // Sides up to the tip
+  ctx.lineTo(cx, tipY)
+  ctx.closePath()
+  ctx.fillStyle = '#fff'
+  ctx.fill()
 }
 
 /* ------------------------------------------------------------------ */
@@ -79,9 +164,8 @@ function addClusteredSource(
   map: maplibregl.Map,
   sourceId: string,
   layerPrefix: string,
-  strokeWidth: number,
-  strokeColor: string,
-  pointColor: string,
+  iconImage: string,
+  pointColor: any,
   clusterColor: string,
   clusterOffset: [number, number] = [0, 0],
 ) {
@@ -134,18 +218,22 @@ function addClusteredSource(
     },
   })
 
-  // Unclustered individual points
+  // Unclustered individual points — SDF symbol layer (shape varies by type)
   map.addLayer({
     id: `${layerPrefix}-unclustered`,
-    type: 'circle',
+    type: 'symbol',
     source: sourceId,
     filter: ['!', ['has', 'point_count']],
+    layout: {
+      'icon-image': iconImage,
+      'icon-size': ['interpolate', ['linear'], ['zoom'], 4, 0.35, 8, 0.5, 12, 0.75],
+      'icon-allow-overlap': true,
+    },
     paint: {
-      'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 3, 8, 5, 12, 8],
-      'circle-color': pointColor,
-      'circle-opacity': 0.85,
-      'circle-stroke-width': strokeWidth,
-      'circle-stroke-color': strokeColor,
+      'icon-color': pointColor,
+      'icon-opacity': 0.9,
+      'icon-halo-color': '#000000',
+      'icon-halo-width': 0.8,
     },
   })
 }
@@ -220,6 +308,7 @@ export function ObservatoryMap({
   showPiezo = true,
   showHydro = true,
   onStationClick,
+  onEmptyClick,
   onDeptClick,
   activeCodeDepartement = undefined,
   showRegions = false,
@@ -234,16 +323,25 @@ export function ObservatoryMap({
   onBboxChange,
   activeWfsLayers = new Set() as Set<WfsLayerId>,
   wfsData,
+  highlightedBasinCode = null,
+  selectedStationCode = null,
+  flyToBbox = null,
+  onFlyToComplete,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const mapLoadedRef = useRef(false)
+  const [mapLoaded, setMapLoaded] = useState(false)
+  const [layersReady, setLayersReady] = useState(0) // incremented each time a ref layer finishes loading
 
   const featuresRef = useRef<StationGeoJSONFeature[]>([])
   featuresRef.current = features ?? []
 
   const onStationClickRef = useRef(onStationClick)
   onStationClickRef.current = onStationClick
+
+  const onEmptyClickRef = useRef(onEmptyClick)
+  onEmptyClickRef.current = onEmptyClick
 
   const onDeptClickRef = useRef(onDeptClick)
   onDeptClickRef.current = onDeptClick
@@ -267,6 +365,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
   onBboxChangeRef.current = onBboxChange
 
   const [tooltip, setTooltip] = useState<{ name: string; x: number; y: number } | null>(null)
+  const bdlisaCacheRef = useRef<any>(null)
 
   // Refs for show* props — used inside async fetch callbacks to get current value
   const showRegionsRef = useRef(showRegions)
@@ -305,6 +404,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
 
     map.on('load', () => {
       mapLoadedRef.current = true
+      setMapLoaded(true)
 
       // --- Terrain hillshading ---
       map.addSource('terrain-dem', {
@@ -342,11 +442,15 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
         })
       }
 
+      // --- Register SDF marker icons ---
+      map.addImage('piezo-marker', createSdfIcon(drawPiezoDiamond, 40), { sdf: true })
+      map.addImage('hydro-marker', createSdfIcon(drawHydroDrop, 40), { sdf: true })
+
       // --- Piezo clustered source + layers (offset left to avoid hydro overlap) ---
-      addClusteredSource(map, 'piezo-stations', 'piezo', 0, 'transparent', buildColorExpression() as any, '#22d3ee', [-20, -6])
+      addClusteredSource(map, 'piezo-stations', 'piezo', 'piezo-marker', buildClassificationColorExpression() as any, '#22d3ee', [-20, -6])
 
       // --- Hydro clustered source + layers (offset right to avoid piezo overlap) ---
-      addClusteredSource(map, 'hydro-stations', 'hydro', 1, 'rgba(255,255,255,0.3)', buildColorExpression() as any, '#6366f1', [20, 6])
+      addClusteredSource(map, 'hydro-stations', 'hydro', 'hydro-marker', buildClassificationColorExpression() as any, '#6366f1', [20, 6])
 
       // Populate with any data that already loaded
       const allFeatures = featuresRef.current
@@ -354,6 +458,155 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
       const hydroFeats = allFeatures.filter(f => f.properties.type === 'hydro')
       if (piezoFeats.length) updateSource(map, 'piezo-stations', piezoFeats)
       if (hydroFeats.length) updateSource(map, 'hydro-stations', hydroFeats)
+
+      // --- Preload all static reference layers in one batch ---
+      Promise.all([
+        fetch('/geo/regions.geojson').then(r => r.json()),
+        fetch('/geo/departments.geojson').then(r => r.json()),
+        fetch('/geo/her.geojson').then(r => r.json()),
+        fetch('/geo/bassins.geojson').then(r => r.json()),
+      ]).then(([regionsData, deptsData, herData, bassinsData]) => {
+        if (!mapRef.current) return
+
+        // --- Helper ---
+        const addLayer = (sourceId: string, data: any, fillId: string, lineId: string, vis: string, fillPaint: any, linePaint: any) => {
+          map.addSource(sourceId, { type: 'geojson', data, generateId: true })
+          map.addLayer({ id: fillId, type: 'fill', source: sourceId, paint: fillPaint, layout: { visibility: vis as any } }, 'piezo-clusters')
+          map.addLayer({ id: lineId, type: 'line', source: sourceId, paint: linePaint, layout: { visibility: vis as any } }, 'piezo-clusters')
+        }
+
+        // --- Regions ---
+        const regionColorExpr: any = ['match', ['get', 'code'], ...Object.entries(REGION_COLORS).flatMap(([k, v]) => [k, v]), '#94a3b8']
+        addLayer('regions', regionsData, 'regions-fill', 'regions-line',
+          showRegionsRef.current ? 'visible' : 'none',
+          { 'fill-color': regionColorExpr, 'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.35, 0.15] },
+          { 'line-color': regionColorExpr, 'line-width': 2, 'line-opacity': 0.7 },
+        )
+        {
+          let hovId: number | null = null
+          map.on('mousemove', 'regions-fill', (e) => {
+            if (!e.features?.length) return
+            if (hovId !== null) map.setFeatureState({ source: 'regions', id: hovId }, { hover: false })
+            hovId = e.features[0].id as number
+            map.setFeatureState({ source: 'regions', id: hovId }, { hover: true })
+            setTooltip({ name: e.features[0].properties?.nom ?? '', x: e.point.x, y: e.point.y })
+          })
+          map.on('mouseleave', 'regions-fill', () => { if (hovId !== null) map.setFeatureState({ source: 'regions', id: hovId }, { hover: false }); hovId = null; setTooltip(null) })
+          map.on('click', 'regions-fill', (e) => {
+            const feat = e.features?.[0]; if (!feat) return
+            const bbox = computeBbox(feat.geometry)
+            map.fitBounds(bbox as maplibregl.LngLatBoundsLike, { padding: 60, duration: 500 })
+            const codes = stationsInGeometry(featuresRef.current, feat.geometry)
+            onSpatialFilterRef.current?.(codes.length > 0 ? codes : null); onBboxChangeRef.current?.(bbox)
+          })
+          map.on('mouseenter', 'regions-fill', () => { map.getCanvas().style.cursor = 'pointer' })
+          map.on('mouseleave', 'regions-fill', () => { map.getCanvas().style.cursor = '' })
+        }
+
+        // --- Departments ---
+        // Safe color: use match on first char to avoid to-number failing on "2A"/"2B"
+        const deptColorExpr: any = [
+          'match', ['slice', ['get', 'code'], 0, 1],
+          '0', DEPT_PALETTE[0], '1', DEPT_PALETTE[1], '2', DEPT_PALETTE[2], '3', DEPT_PALETTE[3],
+          '4', DEPT_PALETTE[4], '5', DEPT_PALETTE[5], '6', DEPT_PALETTE[6], '7', DEPT_PALETTE[7],
+          '8', DEPT_PALETTE[8], '9', DEPT_PALETTE[9],
+          DEPT_PALETTE[0],
+        ]
+        addLayer('departments', deptsData, 'depts-fill', 'depts-line',
+          showDeptsRef.current ? 'visible' : 'none',
+          {
+            'fill-color': ['case', ['==', ['get', 'code'], activeCodeDeptRef.current ?? '$$NONE$$'], '#22d3ee', deptColorExpr] as any,
+            'fill-opacity': ['case', ['==', ['get', 'code'], activeCodeDeptRef.current ?? '$$NONE$$'], 0.30, ['boolean', ['feature-state', 'hover'], false], 0.25, 0.12],
+          },
+          { 'line-color': deptColorExpr as any, 'line-width': 1.5, 'line-opacity': 0.6 },
+        )
+        {
+          let hovId: number | null = null
+          map.on('mousemove', 'depts-fill', (e) => {
+            if (!e.features?.length) return
+            if (hovId !== null) map.setFeatureState({ source: 'departments', id: hovId }, { hover: false })
+            hovId = e.features[0].id as number
+            map.setFeatureState({ source: 'departments', id: hovId }, { hover: true })
+            setTooltip({ name: `${e.features[0].properties?.nom ?? ''} (${e.features[0].properties?.code ?? ''})`, x: e.point.x, y: e.point.y })
+          })
+          map.on('mouseleave', 'depts-fill', () => { if (hovId !== null) map.setFeatureState({ source: 'departments', id: hovId }, { hover: false }); hovId = null; setTooltip(null) })
+          map.on('click', 'depts-fill', (e) => {
+            const feat = e.features?.[0]; if (!feat) return
+            const bbox = computeBbox(feat.geometry)
+            map.fitBounds(bbox as maplibregl.LngLatBoundsLike, { padding: 60, duration: 500 })
+            const code = feat.properties?.code ?? null
+            const current = activeCodeDeptRef.current
+            const deselecting = code === current
+            onDeptClickRef.current?.(deselecting ? null : code); onBboxChangeRef.current?.(deselecting ? null : bbox)
+          })
+          map.on('mouseenter', 'depts-fill', () => { map.getCanvas().style.cursor = 'pointer' })
+          map.on('mouseleave', 'depts-fill', () => { map.getCanvas().style.cursor = '' })
+        }
+
+        // --- HER ---
+        const herColorExpr: any = ['match', ['%', ['get', 'code'], HER2_PALETTE.length], ...HER2_PALETTE.flatMap((c, i) => [i, c]), '#94a3b8']
+        addLayer('her', herData, 'her-fill', 'her-line',
+          showHERRef.current ? 'visible' : 'none',
+          { 'fill-color': herColorExpr, 'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.30, 0.15] },
+          { 'line-color': 'rgba(255,255,255,0.3)', 'line-width': 0.8 },
+        )
+        {
+          let hovId: number | null = null
+          map.on('mousemove', 'her-fill', (e) => {
+            if (!e.features?.length) return
+            if (hovId !== null) map.setFeatureState({ source: 'her', id: hovId }, { hover: false })
+            hovId = e.features[0].id as number
+            map.setFeatureState({ source: 'her', id: hovId }, { hover: true })
+            const nom = e.features[0].properties?.nom ?? ''; const her1 = e.features[0].properties?.nom_her1 ?? ''
+            setTooltip({ name: `${nom}${her1 ? ` · ${her1}` : ''}`, x: e.point.x, y: e.point.y })
+          })
+          map.on('mouseleave', 'her-fill', () => { if (hovId !== null) map.setFeatureState({ source: 'her', id: hovId }, { hover: false }); hovId = null; setTooltip(null) })
+          map.on('click', 'her-fill', (e) => {
+            const feat = e.features?.[0]; if (!feat) return
+            const bbox = computeBbox(feat.geometry)
+            map.fitBounds(bbox as maplibregl.LngLatBoundsLike, { padding: 60, duration: 500 })
+            const codes = stationsInGeometry(featuresRef.current, feat.geometry)
+            onSpatialFilterRef.current?.(codes.length > 0 ? codes : null); onBboxChangeRef.current?.(bbox)
+          })
+          map.on('mouseenter', 'her-fill', () => { map.getCanvas().style.cursor = 'pointer' })
+          map.on('mouseleave', 'her-fill', () => { map.getCanvas().style.cursor = '' })
+        }
+
+        // --- Bassins ---
+        const sandreColorExpr: any = ['match', ['get', 'CdBH'], ...Object.entries(SANDRE_DISTRICT_COLORS).flatMap(([k, v]) => [k, v]), '#94a3b8']
+        addLayer('bassins', bassinsData, 'bassins-fill', 'bassins-line',
+          showSandreRef.current ? 'visible' : 'none',
+          {
+            'fill-color': sandreColorExpr,
+            'fill-opacity': ['case', ['==', ['get', 'CdBH'], activeCodeBassinRef.current ?? '$$NONE$$'], 0.35, ['boolean', ['feature-state', 'hover'], false], 0.20, 0.10],
+          },
+          { 'line-color': sandreColorExpr, 'line-width': 1.5, 'line-opacity': 0.5 },
+        )
+        {
+          let hovId: number | null = null
+          map.on('mousemove', 'bassins-fill', (e) => {
+            if (!e.features?.length) return
+            if (hovId !== null) map.setFeatureState({ source: 'bassins', id: hovId }, { hover: false })
+            hovId = e.features[0].id as number
+            map.setFeatureState({ source: 'bassins', id: hovId }, { hover: true })
+            setTooltip({ name: e.features[0].properties?.LbBH ?? e.features[0].properties?.CdBH ?? '', x: e.point.x, y: e.point.y })
+          })
+          map.on('mouseleave', 'bassins-fill', () => { if (hovId !== null) map.setFeatureState({ source: 'bassins', id: hovId }, { hover: false }); hovId = null; setTooltip(null) })
+          map.on('click', 'bassins-fill', (e) => {
+            const feat = e.features?.[0]; if (!feat) return
+            const code = feat.properties?.CdBH ?? null; const current = activeCodeBassinRef.current
+            const bbox = computeBbox(feat.geometry)
+            map.fitBounds(bbox as maplibregl.LngLatBoundsLike, { padding: 60, duration: 500 })
+            if (code === current) { onBassinClickRef.current?.(null); onSpatialFilterRef.current?.(null); onBboxChangeRef.current?.(null) }
+            else { onBassinClickRef.current?.(code); const codes = stationsInGeometry(featuresRef.current, feat.geometry); onSpatialFilterRef.current?.(codes.length > 0 ? codes : null); onBboxChangeRef.current?.(bbox) }
+          })
+          map.on('mouseenter', 'bassins-fill', () => { map.getCanvas().style.cursor = 'pointer' })
+          map.on('mouseleave', 'bassins-fill', () => { map.getCanvas().style.cursor = '' })
+        }
+
+        // All reference layers ready — trigger visibility sync
+        setLayersReady(4)
+      }).catch(err => console.error('Failed to load reference layers:', err))
 
       // --- Click: expand cluster on click ---
       const handleClusterClick = (sourceId: string) => (e: maplibregl.MapMouseEvent & { features?: any[] }) => {
@@ -412,7 +665,8 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
         const spatialHits = map.queryRenderedFeatures(e.point, { layers: visibleSpatialLayers })
         if (spatialHits.length > 0) return // clic sur un layer spatial, géré par son propre handler
 
-        // Clic vraiment vide — clear tous les filtres spatiaux
+        // Clic vraiment vide — clear tous les filtres spatiaux + station
+        onEmptyClickRef.current?.()
         onDeptClickRef.current?.(null)
         onBassinClickRef.current?.(null)
         onSpatialFilterRef.current?.(null)
@@ -443,334 +697,29 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
   useEffect(() => {
     if (!mapRef.current || !mapLoadedRef.current) return
     const map = mapRef.current
-    const piezoLayers = ['piezo-clusters', 'piezo-cluster-count', 'piezo-unclustered']
-    const hydroLayers = ['hydro-clusters', 'hydro-cluster-count', 'hydro-unclustered']
-    piezoLayers.forEach((id) => {
+
+    ;['piezo-clusters', 'piezo-cluster-count', 'piezo-unclustered'].forEach(id => {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', showPiezo ? 'visible' : 'none')
     })
-    hydroLayers.forEach((id) => {
+    ;['hydro-clusters', 'hydro-cluster-count', 'hydro-unclustered'].forEach(id => {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', showHydro ? 'visible' : 'none')
     })
-  }, [showPiezo, showHydro])
+  }, [showPiezo, showHydro, mapLoaded])
 
-  // Toggle regions visibility (Calques panel) — lazy-load GeoJSON on first show
+  // Toggle reference layer visibility — layers are preloaded on map init
   useEffect(() => {
     if (!mapRef.current || !mapLoadedRef.current) return
     const map = mapRef.current
-
-    if (showRegions && !map.getSource('regions')) {
-      // First activation: fetch GeoJSON, add source + layers + event listeners
-      fetch('/geo/regions.geojson')
-        .then(r => r.json())
-        .then(data => {
-          if (!mapRef.current || map.getSource('regions')) return
-          map.addSource('regions', { type: 'geojson', data, generateId: true })
-          map.addLayer({
-            id: 'regions-fill',
-            type: 'fill',
-            source: 'regions',
-            paint: {
-              'fill-color': '#6366f1',
-              'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.35, 0.12],
-            },
-            layout: { visibility: 'visible' },
-          }, 'piezo-clusters')
-          map.addLayer({
-            id: 'regions-line',
-            type: 'line',
-            source: 'regions',
-            paint: {
-              'line-color': '#6366f1',
-              'line-width': 2,
-              'line-opacity': 0.6,
-            },
-            layout: { visibility: 'visible' },
-          }, 'piezo-clusters')
-
-          let hoveredRegionId: number | null = null
-          map.on('mousemove', 'regions-fill', (e) => {
-            if (!e.features?.length) return
-            const feat = e.features[0]
-            if (hoveredRegionId !== null) map.setFeatureState({ source: 'regions', id: hoveredRegionId }, { hover: false })
-            hoveredRegionId = feat.id as number
-            map.setFeatureState({ source: 'regions', id: hoveredRegionId }, { hover: true })
-            setTooltip({ name: feat.properties?.nom ?? '', x: e.point.x, y: e.point.y })
-          })
-          map.on('mouseleave', 'regions-fill', () => {
-            if (hoveredRegionId !== null) map.setFeatureState({ source: 'regions', id: hoveredRegionId }, { hover: false })
-            hoveredRegionId = null
-            setTooltip(null)
-          })
-          map.on('click', 'regions-fill', (e) => {
-            const feat = e.features?.[0]
-            if (!feat) return
-            const bbox = computeBbox(feat.geometry)
-            map.fitBounds(bbox as maplibregl.LngLatBoundsLike, { padding: 60, duration: 500 })
-            const codes = stationsInGeometry(featuresRef.current, feat.geometry)
-            onSpatialFilterRef.current?.(codes.length > 0 ? codes : null)
-            onBboxChangeRef.current?.(bbox)
-          })
-          map.on('mouseenter', 'regions-fill', () => { map.getCanvas().style.cursor = 'pointer' })
-          map.on('mouseleave', 'regions-fill', () => { map.getCanvas().style.cursor = '' })
-        })
-      return
+    const toggle = (fillId: string, lineId: string, visible: boolean) => {
+      const vis = visible ? 'visible' : 'none'
+      if (map.getLayer(fillId)) map.setLayoutProperty(fillId, 'visibility', vis)
+      if (map.getLayer(lineId)) map.setLayoutProperty(lineId, 'visibility', vis)
     }
-
-    const vis = showRegions ? 'visible' : 'none'
-    if (map.getLayer('regions-fill')) map.setLayoutProperty('regions-fill', 'visibility', vis)
-    if (map.getLayer('regions-line')) map.setLayoutProperty('regions-line', 'visibility', vis)
-  }, [showRegions])
-
-  // Toggle departments visibility (Calques panel) — lazy-load GeoJSON on first show
-  useEffect(() => {
-    if (!mapRef.current || !mapLoadedRef.current) return
-    const map = mapRef.current
-
-    if (showDepts && !map.getSource('departments')) {
-      fetch('/geo/departments.geojson')
-        .then(r => r.json())
-        .then(data => {
-          if (!mapRef.current || map.getSource('departments')) return
-          map.addSource('departments', { type: 'geojson', data, generateId: true })
-
-          map.addLayer({
-            id: 'depts-fill',
-            type: 'fill',
-            source: 'departments',
-            paint: {
-              'fill-color': [
-                'case',
-                ['==', ['get', 'code'], activeCodeDeptRef.current ?? '$$NONE$$'],
-                '#22d3ee',
-                '#f97316',
-              ],
-              'fill-opacity': [
-                'case',
-                ['==', ['get', 'code'], activeCodeDeptRef.current ?? '$$NONE$$'],
-                0.30,
-                ['boolean', ['feature-state', 'hover'], false],
-                0.25,
-                0.10,
-              ],
-            },
-            layout: { visibility: 'visible' },
-          }, 'piezo-clusters')
-          map.addLayer({
-            id: 'depts-line',
-            type: 'line',
-            source: 'departments',
-            paint: {
-              'line-color': '#f97316',
-              'line-width': 1.5,
-              'line-opacity': 0.5,
-            },
-            layout: { visibility: 'visible' },
-          }, 'piezo-clusters')
-
-          let hoveredDeptId: number | null = null
-          map.on('mousemove', 'depts-fill', (e) => {
-            if (!e.features?.length) return
-            const feat = e.features[0]
-            if (hoveredDeptId !== null) map.setFeatureState({ source: 'departments', id: hoveredDeptId }, { hover: false })
-            hoveredDeptId = feat.id as number
-            map.setFeatureState({ source: 'departments', id: hoveredDeptId }, { hover: true })
-            setTooltip({ name: `${feat.properties?.nom ?? ''} (${feat.properties?.code ?? ''})`, x: e.point.x, y: e.point.y })
-          })
-          map.on('mouseleave', 'depts-fill', () => {
-            if (hoveredDeptId !== null) map.setFeatureState({ source: 'departments', id: hoveredDeptId }, { hover: false })
-            hoveredDeptId = null
-            setTooltip(null)
-          })
-          map.on('click', 'depts-fill', (e) => {
-            const feat = e.features?.[0]
-            if (!feat) return
-            const bbox = computeBbox(feat.geometry)
-            map.fitBounds(bbox as maplibregl.LngLatBoundsLike, { padding: 60, duration: 500 })
-            const code = feat.properties?.code ?? null
-            const current = activeCodeDeptRef.current
-            const deselecting = code === current
-            onDeptClickRef.current?.(deselecting ? null : code)
-            onBboxChangeRef.current?.(deselecting ? null : bbox)
-          })
-          map.on('mouseenter', 'depts-fill', () => { map.getCanvas().style.cursor = 'pointer' })
-          map.on('mouseleave', 'depts-fill', () => { map.getCanvas().style.cursor = '' })
-        })
-      return
-    }
-
-    const vis = showDepts ? 'visible' : 'none'
-    if (map.getLayer('depts-fill')) map.setLayoutProperty('depts-fill', 'visibility', vis)
-    if (map.getLayer('depts-line')) map.setLayoutProperty('depts-line', 'visibility', vis)
-  }, [showDepts])
-
-  // Toggle HER visibility (Calques panel) — lazy-load GeoJSON on first show
-  useEffect(() => {
-    if (!mapRef.current || !mapLoadedRef.current) return
-    const map = mapRef.current
-
-    if (showHER && !map.getSource('her')) {
-      fetch('/geo/her.geojson')
-        .then(r => r.json())
-        .then(data => {
-          if (!mapRef.current || map.getSource('her')) return
-          map.addSource('her', { type: 'geojson', data, generateId: true })
-
-          const herColorExpr: maplibregl.ExpressionSpecification = [
-            'match',
-            ['%', ['get', 'code'], HER2_PALETTE.length],
-            ...HER2_PALETTE.flatMap((color, i) => [i, color] as [number, string]),
-            '#94a3b8',
-          ] as any
-
-          map.addLayer({
-            id: 'her-fill',
-            type: 'fill',
-            source: 'her',
-            layout: { visibility: 'visible' },
-            paint: {
-              'fill-color': herColorExpr,
-              'fill-opacity': [
-                'case',
-                ['boolean', ['feature-state', 'hover'], false], 0.30,
-                0.15,
-              ],
-            },
-          }, 'piezo-clusters')
-          map.addLayer({
-            id: 'her-line',
-            type: 'line',
-            source: 'her',
-            layout: { visibility: 'visible' },
-            paint: {
-              'line-color': 'rgba(255,255,255,0.3)',
-              'line-width': 0.8,
-            },
-          }, 'piezo-clusters')
-
-          let hoveredHERId: number | null = null
-          map.on('mousemove', 'her-fill', (e) => {
-            if (!e.features?.length) return
-            const feat = e.features[0]
-            if (hoveredHERId !== null) map.setFeatureState({ source: 'her', id: hoveredHERId }, { hover: false })
-            hoveredHERId = feat.id as number
-            map.setFeatureState({ source: 'her', id: hoveredHERId }, { hover: true })
-            const nom = feat.properties?.nom ?? ''
-            const her1 = feat.properties?.nom_her1 ?? ''
-            setTooltip({ name: `${nom}${her1 ? ` · ${her1}` : ''}`, x: e.point.x, y: e.point.y })
-          })
-          map.on('mouseleave', 'her-fill', () => {
-            if (hoveredHERId !== null) map.setFeatureState({ source: 'her', id: hoveredHERId }, { hover: false })
-            hoveredHERId = null
-            setTooltip(null)
-          })
-          map.on('click', 'her-fill', (e) => {
-            const feat = e.features?.[0]
-            if (!feat) return
-            const bbox = computeBbox(feat.geometry)
-            map.fitBounds(bbox as maplibregl.LngLatBoundsLike, { padding: 60, duration: 500 })
-            const codes = stationsInGeometry(featuresRef.current, feat.geometry)
-            onSpatialFilterRef.current?.(codes.length > 0 ? codes : null)
-            onBboxChangeRef.current?.(bbox)
-          })
-          map.on('mouseenter', 'her-fill', () => { map.getCanvas().style.cursor = 'pointer' })
-          map.on('mouseleave', 'her-fill', () => { map.getCanvas().style.cursor = '' })
-        })
-      return
-    }
-
-    const vis = showHER ? 'visible' : 'none'
-    if (map.getLayer('her-fill')) map.setLayoutProperty('her-fill', 'visibility', vis)
-    if (map.getLayer('her-line')) map.setLayoutProperty('her-line', 'visibility', vis)
-  }, [showHER])
-
-  // Toggle SANDRE bassins visibility — lazy-load GeoJSON on first show
-  useEffect(() => {
-    if (!mapRef.current || !mapLoadedRef.current) return
-    const map = mapRef.current
-
-    if (showSandre && !map.getSource('bassins')) {
-      fetch('/geo/bassins.geojson')
-        .then(r => r.json())
-        .then(data => {
-          if (!mapRef.current || map.getSource('bassins')) return
-          map.addSource('bassins', { type: 'geojson', data, generateId: true })
-
-          const sandreColorExpr: maplibregl.ExpressionSpecification = [
-            'match',
-            ['get', 'CdBH'],
-            ...Object.entries(SANDRE_DISTRICT_COLORS).flatMap(([k, v]) => [k, v] as [string, string]),
-            '#94a3b8',
-          ] as any
-
-          map.addLayer({
-            id: 'bassins-fill',
-            type: 'fill',
-            source: 'bassins',
-            layout: { visibility: 'visible' },
-            paint: {
-              'fill-color': sandreColorExpr,
-              'fill-opacity': [
-                'case',
-                ['==', ['get', 'CdBH'], activeCodeBassinRef.current ?? '$$NONE$$'], 0.35,
-                ['boolean', ['feature-state', 'hover'], false], 0.20,
-                0.10,
-              ],
-            },
-          }, 'piezo-clusters')
-          map.addLayer({
-            id: 'bassins-line',
-            type: 'line',
-            source: 'bassins',
-            layout: { visibility: 'visible' },
-            paint: {
-              'line-color': sandreColorExpr,
-              'line-width': 1.5,
-              'line-opacity': 0.5,
-            },
-          }, 'piezo-clusters')
-
-          let hoveredBassinId: number | null = null
-          map.on('mousemove', 'bassins-fill', (e) => {
-            if (!e.features?.length) return
-            const feat = e.features[0]
-            if (hoveredBassinId !== null) map.setFeatureState({ source: 'bassins', id: hoveredBassinId }, { hover: false })
-            hoveredBassinId = feat.id as number
-            map.setFeatureState({ source: 'bassins', id: hoveredBassinId }, { hover: true })
-            setTooltip({ name: feat.properties?.LbBH ?? feat.properties?.CdBH ?? '', x: e.point.x, y: e.point.y })
-          })
-          map.on('mouseleave', 'bassins-fill', () => {
-            if (hoveredBassinId !== null) map.setFeatureState({ source: 'bassins', id: hoveredBassinId }, { hover: false })
-            hoveredBassinId = null
-            setTooltip(null)
-          })
-          map.on('click', 'bassins-fill', (e) => {
-            const feat = e.features?.[0]
-            if (!feat) return
-            const code = feat.properties?.CdBH ?? null
-            const current = activeCodeBassinRef.current
-            const bbox = computeBbox(feat.geometry)
-            map.fitBounds(bbox as maplibregl.LngLatBoundsLike, { padding: 60, duration: 500 })
-            if (code === current) {
-              onBassinClickRef.current?.(null)
-              onSpatialFilterRef.current?.(null)
-              onBboxChangeRef.current?.(null)
-            } else {
-              onBassinClickRef.current?.(code)
-              const codes = stationsInGeometry(featuresRef.current, feat.geometry)
-              onSpatialFilterRef.current?.(codes.length > 0 ? codes : null)
-              onBboxChangeRef.current?.(bbox)
-            }
-          })
-          map.on('mouseenter', 'bassins-fill', () => { map.getCanvas().style.cursor = 'pointer' })
-          map.on('mouseleave', 'bassins-fill', () => { map.getCanvas().style.cursor = '' })
-        })
-      return
-    }
-
-    const vis = showSandre ? 'visible' : 'none'
-    if (map.getLayer('bassins-fill')) map.setLayoutProperty('bassins-fill', 'visibility', vis)
-    if (map.getLayer('bassins-line')) map.setLayoutProperty('bassins-line', 'visibility', vis)
-  }, [showSandre])
+    toggle('regions-fill', 'regions-line', showRegions)
+    toggle('depts-fill', 'depts-line', showDepts)
+    toggle('her-fill', 'her-line', showHER)
+    toggle('bassins-fill', 'bassins-line', showSandre)
+  }, [showRegions, showDepts, showHER, showSandre, mapLoaded, layersReady])
 
   // Sync activeCodeDepartement to depts-fill paint properties
   useEffect(() => {
@@ -778,11 +727,18 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
     if (!mapRef.current || !mapLoadedRef.current) return
     const map = mapRef.current
     if (!map.getLayer('depts-fill')) return
+    const deptColor: any = [
+      'match', ['slice', ['get', 'code'], 0, 1],
+      '0', DEPT_PALETTE[0], '1', DEPT_PALETTE[1], '2', DEPT_PALETTE[2], '3', DEPT_PALETTE[3],
+      '4', DEPT_PALETTE[4], '5', DEPT_PALETTE[5], '6', DEPT_PALETTE[6], '7', DEPT_PALETTE[7],
+      '8', DEPT_PALETTE[8], '9', DEPT_PALETTE[9],
+      DEPT_PALETTE[0],
+    ]
     map.setPaintProperty('depts-fill', 'fill-color', [
       'case',
       ['==', ['get', 'code'], activeCodeDepartement ?? '$$NONE$$'],
       '#22d3ee',
-      '#f97316',
+      deptColor,
     ])
     map.setPaintProperty('depts-fill', 'fill-opacity', [
       'case',
@@ -807,6 +763,138 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
       0.10,
     ])
   }, [activeCodeBassin])
+
+  // Basin highlight: dim non-basin stations + show BDLISA polygon
+  useEffect(() => {
+    if (!mapRef.current || !mapLoadedRef.current) return
+    const map = mapRef.current
+
+    if (highlightedBasinCode) {
+      // Dim piezo stations not in the basin
+      if (map.getLayer('piezo-unclustered')) {
+        map.setPaintProperty('piezo-unclustered', 'icon-opacity', [
+          'case',
+          ['>=', ['index-of', highlightedBasinCode, ['get', 'codes_bdlisa']], 0],
+          0.95,
+          0.12,
+        ])
+      }
+      // Dim piezo clusters
+      if (map.getLayer('piezo-clusters')) {
+        map.setPaintProperty('piezo-clusters', 'circle-opacity', 0.15)
+      }
+      if (map.getLayer('piezo-cluster-count')) {
+        map.setPaintProperty('piezo-cluster-count', 'text-opacity', 0.15)
+      }
+      // Dim all hydro
+      if (map.getLayer('hydro-unclustered')) {
+        map.setPaintProperty('hydro-unclustered', 'icon-opacity', 0.1)
+      }
+      if (map.getLayer('hydro-clusters')) {
+        map.setPaintProperty('hydro-clusters', 'circle-opacity', 0.1)
+      }
+      if (map.getLayer('hydro-cluster-count')) {
+        map.setPaintProperty('hydro-cluster-count', 'text-opacity', 0.1)
+      }
+
+      // Show BDLISA polygon for this basin
+      const showBdlisa = (data: any) => {
+        if (!mapRef.current) return
+        const matching = data.features.filter((f: any) =>
+          f.properties?.code && highlightedBasinCode.startsWith(f.properties.code)
+        )
+        const fc = { type: 'FeatureCollection', features: matching }
+        if (!map.getSource('bdlisa-highlight')) {
+          map.addSource('bdlisa-highlight', { type: 'geojson', data: fc as any })
+          map.addLayer({
+            id: 'bdlisa-highlight-fill',
+            type: 'fill',
+            source: 'bdlisa-highlight',
+            paint: { 'fill-color': '#22d3ee', 'fill-opacity': 0.08 },
+          }, 'piezo-clusters')
+          map.addLayer({
+            id: 'bdlisa-highlight-line',
+            type: 'line',
+            source: 'bdlisa-highlight',
+            paint: { 'line-color': '#22d3ee', 'line-width': 2, 'line-opacity': 0.6, 'line-dasharray': [3, 2] },
+          }, 'piezo-clusters')
+        } else {
+          const src = map.getSource('bdlisa-highlight') as maplibregl.GeoJSONSource
+          src.setData(fc as any)
+          if (map.getLayer('bdlisa-highlight-fill')) map.setLayoutProperty('bdlisa-highlight-fill', 'visibility', 'visible')
+          if (map.getLayer('bdlisa-highlight-line')) map.setLayoutProperty('bdlisa-highlight-line', 'visibility', 'visible')
+        }
+      }
+      if (bdlisaCacheRef.current) {
+        showBdlisa(bdlisaCacheRef.current)
+      } else {
+        fetch('/geo/bdlisa.geojson')
+          .then(r => r.json())
+          .then(data => { bdlisaCacheRef.current = data; showBdlisa(data) })
+      }
+    } else {
+      // Restore normal opacity
+      if (map.getLayer('piezo-unclustered')) {
+        map.setPaintProperty('piezo-unclustered', 'icon-opacity', 0.9)
+      }
+      if (map.getLayer('piezo-clusters')) {
+        map.setPaintProperty('piezo-clusters', 'circle-opacity', 0.75)
+      }
+      if (map.getLayer('piezo-cluster-count')) {
+        map.setPaintProperty('piezo-cluster-count', 'text-opacity', 1)
+      }
+      if (map.getLayer('hydro-unclustered')) {
+        map.setPaintProperty('hydro-unclustered', 'icon-opacity', 0.9)
+      }
+      if (map.getLayer('hydro-clusters')) {
+        map.setPaintProperty('hydro-clusters', 'circle-opacity', 0.75)
+      }
+      if (map.getLayer('hydro-cluster-count')) {
+        map.setPaintProperty('hydro-cluster-count', 'text-opacity', 1)
+      }
+      // Hide BDLISA polygon
+      if (map.getLayer('bdlisa-highlight-fill')) map.setLayoutProperty('bdlisa-highlight-fill', 'visibility', 'none')
+      if (map.getLayer('bdlisa-highlight-line')) map.setLayoutProperty('bdlisa-highlight-line', 'visibility', 'none')
+    }
+  }, [highlightedBasinCode])
+
+  // Highlight selected station with a ring
+  useEffect(() => {
+    if (!mapRef.current || !mapLoadedRef.current) return
+    const map = mapRef.current
+    const layerId = 'selected-station-ring'
+
+    if (selectedStationCode) {
+      // Build a highlight ring for the selected station
+      const feat = featuresRef.current.find(f => f.properties.code === selectedStationCode)
+      if (!feat) return
+      const data = {
+        type: 'FeatureCollection' as const,
+        features: [{ type: 'Feature' as const, geometry: feat.geometry, properties: {} }],
+      }
+      if (!map.getSource('selected-station')) {
+        map.addSource('selected-station', { type: 'geojson', data: data as any })
+        map.addLayer({
+          id: layerId,
+          type: 'circle',
+          source: 'selected-station',
+          paint: {
+            'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 8, 8, 12, 12, 16],
+            'circle-color': 'transparent',
+            'circle-stroke-width': 2.5,
+            'circle-stroke-color': '#ffffff',
+            'circle-opacity': 1,
+          },
+        })
+      } else {
+        const src = map.getSource('selected-station') as maplibregl.GeoJSONSource
+        src.setData(data as any)
+        if (map.getLayer(layerId)) map.setLayoutProperty(layerId, 'visibility', 'visible')
+      }
+    } else {
+      if (map.getLayer(layerId)) map.setLayoutProperty(layerId, 'visibility', 'none')
+    }
+  }, [selectedStationCode])
 
   // Sync WFS layers to map
   useEffect(() => {
@@ -917,6 +1005,15 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
     })
   }, [activeWfsLayers, wfsData])
 
+  // Fly to bbox when triggered by search or external action
+  const onFlyToCompleteRef = useRef(onFlyToComplete)
+  onFlyToCompleteRef.current = onFlyToComplete
+  useEffect(() => {
+    if (!flyToBbox || !mapRef.current || !mapLoadedRef.current) return
+    mapRef.current.fitBounds(flyToBbox as maplibregl.LngLatBoundsLike, { padding: 80, duration: 600 })
+    onFlyToCompleteRef.current?.()
+  }, [flyToBbox])
+
   return (
     <div className="relative w-full h-full">
       <div ref={containerRef} className="w-full h-full" role="application" aria-label="Carte interactive des stations hydrologiques de France" />
@@ -928,6 +1025,41 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
           {tooltip.name}
         </div>
       )}
+      {/* Legend */}
+      <div className="absolute bottom-3 left-3 z-10 bg-gray-900/90 backdrop-blur-sm border border-white/10 rounded-lg px-3 py-2 text-[10px] space-y-1.5">
+        <div className="text-gray-400 font-medium uppercase tracking-wider mb-1">Situation</div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+          {[
+            ['#991b1b', 'Extr. bas'],
+            ['#ef4444', 'Très bas'],
+            ['#f97316', 'Bas'],
+            ['#10b981', 'Normal'],
+            ['#3b82f6', 'Haut'],
+            ['#1d4ed8', 'Très haut'],
+            ['#312e81', 'Extr. haut'],
+            ['#6b7280', 'Non classé'],
+          ].map(([color, label]) => (
+            <div key={label} className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+              <span className="text-gray-300">{label}</span>
+            </div>
+          ))}
+        </div>
+        <div className="border-t border-white/10 pt-1 mt-1 flex gap-3">
+          <div className="flex items-center gap-1.5">
+            <svg width="12" height="12" viewBox="0 0 12 12" className="shrink-0">
+              <polygon points="6,1 11,6 6,11 1,6" fill="#10b981" />
+            </svg>
+            <span className="text-gray-300">Piézo</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <svg width="12" height="14" viewBox="0 0 12 14" className="shrink-0">
+              <path d="M6,1 Q6,1 10,8 A4.5,4.5 0 1,1 2,8 Q6,1 6,1Z" fill="#10b981" />
+            </svg>
+            <span className="text-gray-300">Hydro</span>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

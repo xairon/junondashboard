@@ -9,7 +9,7 @@ from app.cache import cached_response
 from app.classification import get_classification_lookup
 from app.database import get_db
 from app.models.hydro import (
-    HydroDaily, HydroMonthly, HydroPercentiles, HydroSPI, HydroSSFI, HydroStation, HydroTrend, HydroYearly,
+    HydroDaily, HydroMonthly, HydroPercentiles, HydroSiteSiblings, HydroSPI, HydroSSFI, HydroStation, HydroTrend, HydroYearly,
 )
 from app.drought import compute_spi, compute_ssfi
 
@@ -325,6 +325,67 @@ async def get_spi(
         return compute_spi(months, values)
 
     return await cached_response("hydro_spi", {"code_station": code_station}, SSFI_TTL, fetch)
+
+
+SIBLINGS_TTL = 3600
+
+
+@router.get("/stations/{code_station}/siblings", response_model=HydroSiteSiblings)
+async def get_siblings(
+    code_station: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return other hydro stations at the same hydrometric site."""
+
+    async def fetch():
+        # Get the station's site code
+        result = await db.execute(
+            text("SELECT code_site, libelle_site, nom_cours_eau FROM gold.dim_hydro_stations WHERE code_station = :code"),
+            {"code": code_station},
+        )
+        row = result.mappings().first()
+        if not row:
+            raise HTTPException(404, f"Hydro station {code_station} not found")
+        code_site = row["code_site"]
+        if not code_site:
+            raise HTTPException(404, f"No site code for station {code_station}")
+
+        # Find siblings
+        query = """
+            SELECT code_station, libelle_station, grandeur_hydro_principale,
+                   classification_resultat_dern_annee, derniere_mesure
+            FROM gold.dim_hydro_stations
+            WHERE code_site = :site AND code_station != :code
+            ORDER BY code_station
+        """
+        result = await db.execute(text(query), {"site": code_site, "code": code_station})
+        siblings = [dict(r) for r in result.mappings().all()]
+
+        # Overlay computed classifications
+        lookup = await get_classification_lookup()
+        for s in siblings:
+            if lookup:
+                computed = lookup.get("hydro", {}).get(s["code_station"])
+                if computed and computed != "UNKNOWN":
+                    s["classification_resultat_dern_annee"] = computed
+
+        return {
+            "code_site": code_site,
+            "libelle_site": row["libelle_site"],
+            "nom_cours_eau": row["nom_cours_eau"],
+            "siblings": [
+                {
+                    "code_station": s["code_station"],
+                    "libelle_station": s.get("libelle_station"),
+                    "grandeur_hydro_principale": s.get("grandeur_hydro_principale"),
+                    "classification": s.get("classification_resultat_dern_annee"),
+                    "derniere_mesure": s.get("derniere_mesure"),
+                }
+                for s in siblings
+            ],
+        }
+
+    return await cached_response("hydro_siblings", {"code_station": code_station}, SIBLINGS_TTL, fetch)
 
 
 @router.get("/stations/{code_station}", response_model=HydroStation)

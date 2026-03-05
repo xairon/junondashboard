@@ -100,3 +100,18 @@ class HydroSPI(BaseModel):
     value: float | None = None
     spi: float | None = None
     classification: str = "UNKNOWN"
+
+
+class HydroSiblingStation(BaseModel):
+    code_station: str
+    libelle_station: str | None = None
+    grandeur_hydro_principale: str | None = None
+    classification: str | None = None
+    derniere_mesure: date | None = None
+
+
+class HydroSiteSiblings(BaseModel):
+    code_site: str
+    libelle_site: str | None = None
+    nom_cours_eau: str | None = None
+    siblings: list[HydroSiblingStation]

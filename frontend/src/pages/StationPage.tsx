@@ -1,13 +1,15 @@
 import { useState, useMemo } from 'react'
 import { useParams, useLocation, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Info } from 'lucide-react'
-import { usePiezoStationDetail, useHydroStationDetail, useBdlisaLookup } from '../hooks/useStations'
+import { ArrowLeft, Info, Droplets, Waves } from 'lucide-react'
+import { usePiezoStationDetail, useHydroStationDetail, useBdlisaLookup, usePiezoSiblings, useHydroSiblings } from '../hooks/useStations'
 import { usePiezoMonthly, useHydroMonthly, usePiezoDaily, useHydroDaily, usePiezoYearly, useHydroYearly, usePiezoSPLI, useHydroSSFI, useSPI } from '../hooks/useTimeseries'
 import { StationKPICards } from '../components/station/StationKPICards'
 import { TimeseriesChart } from '../components/charts/TimeseriesChart'
 import { DroughtIndexChart } from '../components/charts/DroughtIndexChart'
 import { api } from '../lib/api'
+import { CLASSIFICATION_COLORS } from '../lib/constants'
+import { formatDate } from '../lib/utils'
 
 type Resolution = 'daily' | 'monthly' | 'yearly'
 
@@ -149,6 +151,10 @@ export default function StationPage() {
   const monthly = isPiezo ? piezoMonthly : hydroMonthly
   const stationLoading = isPiezo ? piezoLoading : hydroLoading
   const type = isPiezo ? 'piezo' as const : 'hydro' as const
+
+  // Siblings
+  const { data: piezoSiblings } = usePiezoSiblings(isPiezo ? code : '')
+  const { data: hydroSiblings } = useHydroSiblings(!isPiezo ? code : '')
 
   // Drought indices (SPLI / SSFI / SPI)
   const { data: spliData } = usePiezoSPLI(isPiezo ? code : '')
@@ -461,6 +467,107 @@ export default function StationPage() {
             )}
           </div>
         </section>
+
+        {/* Sibling stations */}
+        {isPiezo && piezoSiblings && piezoSiblings.siblings.length > 0 && (
+          <section className="bg-gray-900/50 rounded-xl border border-white/5 p-4">
+            <h2 className="text-sm font-semibold text-gray-300 mb-1 flex items-center gap-2">
+              <Droplets className="w-4 h-4" />
+              Nappe souterraine
+              <span className="text-xs font-mono text-accent-cyan bg-accent-cyan/10 px-1.5 py-0.5 rounded-full">
+                {piezoSiblings.nb_stations}
+              </span>
+            </h2>
+            <p className="text-xs text-gray-500 mb-3">
+              Autres piézomètres du même bassin BDLISA ({piezoSiblings.code_bdlisa}), triés par proximité
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-white/5">
+                    <th className="text-left py-2 px-2 text-gray-500 font-medium">Station</th>
+                    <th className="text-left py-2 px-2 text-gray-500 font-medium">Dép.</th>
+                    <th className="text-left py-2 px-2 text-gray-500 font-medium">Situation</th>
+                    <th className="text-left py-2 px-2 text-gray-500 font-medium">Dernière mesure</th>
+                    <th className="text-right py-2 px-2 text-gray-500 font-medium">Distance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {piezoSiblings.siblings.map(sib => (
+                    <tr key={sib.code_bss} className="border-b border-white/5 hover:bg-bg-hover transition-colors">
+                      <td className="py-1.5 px-2">
+                        <Link to={`/station/piezo/${sib.code_bss}`} className="text-accent-cyan hover:underline">
+                          {sib.nom_commune || sib.code_bss}
+                        </Link>
+                      </td>
+                      <td className="py-1.5 px-2 text-gray-400">{sib.code_departement}</td>
+                      <td className="py-1.5 px-2">
+                        {sib.classification && (
+                          <span className="inline-flex items-center gap-1">
+                            <span
+                              className="w-2 h-2 rounded-full"
+                              style={{ backgroundColor: CLASSIFICATION_COLORS[sib.classification] ?? '#6b7280' }}
+                            />
+                            <span className="text-gray-300">{sib.classification.replace(/_/g, ' ').toLowerCase()}</span>
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-1.5 px-2 text-gray-400">{formatDate(sib.derniere_mesure)}</td>
+                      <td className="py-1.5 px-2 text-right text-gray-400 font-mono">
+                        {sib.distance_km != null ? `${sib.distance_km} km` : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {!isPiezo && hydroSiblings && hydroSiblings.siblings.length > 0 && (
+          <section className="bg-gray-900/50 rounded-xl border border-white/5 p-4">
+            <h2 className="text-sm font-semibold text-gray-300 mb-1 flex items-center gap-2">
+              <Waves className="w-4 h-4" />
+              Site hydrométrique
+            </h2>
+            <p className="text-xs text-gray-500 mb-3">
+              {hydroSiblings.libelle_site || hydroSiblings.code_site}
+              {hydroSiblings.nom_cours_eau ? ` · ${hydroSiblings.nom_cours_eau}` : ''}
+            </p>
+            <div className="space-y-1">
+              {hydroSiblings.siblings.map(sib => (
+                <Link
+                  key={sib.code_station}
+                  to={`/station/hydro/${sib.code_station}`}
+                  className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-bg-hover transition-colors"
+                >
+                  <div>
+                    <span className="text-xs text-gray-200">{sib.libelle_station || sib.code_station}</span>
+                    <span className="text-[10px] text-gray-500 ml-2">{sib.code_station}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {sib.grandeur_hydro_principale && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                        sib.grandeur_hydro_principale.startsWith('Q')
+                          ? 'bg-accent-cyan/20 text-accent-cyan'
+                          : 'bg-accent-indigo/20 text-accent-indigo'
+                      }`}>
+                        {sib.grandeur_hydro_principale.startsWith('Q') ? 'Débit' : 'Hauteur'}
+                      </span>
+                    )}
+                    {sib.classification && (
+                      <span
+                        className="w-2.5 h-2.5 rounded-full"
+                        style={{ backgroundColor: CLASSIFICATION_COLORS[sib.classification] ?? '#6b7280' }}
+                        title={sib.classification}
+                      />
+                    )}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* KPI Cards */}
         <StationKPICards station={station} type={type} />

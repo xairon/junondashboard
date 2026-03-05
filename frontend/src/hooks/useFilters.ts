@@ -81,6 +81,24 @@ const filters = useMemo<Filters>(() => ({
     })
   }, [setSearchParams])
 
+  /** Batch-set multiple filters in a single URL update (avoids race conditions) */
+  const setFilters = useCallback((entries: Record<string, string | string[] | undefined>) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      for (const [key, value] of Object.entries(entries)) {
+        if (value === undefined) {
+          next.delete(key)
+        } else if (Array.isArray(value)) {
+          next.delete(key)
+          value.forEach(v => next.append(key, v))
+        } else {
+          next.set(key, value)
+        }
+      }
+      return next
+    })
+  }, [setSearchParams])
+
   const apiParams = useMemo(() => {
     const p: Record<string, string | string[] | undefined> = {}
     if (filters.minObservations) p.min_observations = String(filters.minObservations)
@@ -90,5 +108,5 @@ const filters = useMemo<Filters>(() => ({
     return p
   }, [filters])
 
-  return { filters, setFilter, apiParams }
+  return { filters, setFilter, setFilters, apiParams }
 }

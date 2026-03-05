@@ -16,6 +16,7 @@ router = APIRouter(prefix="/api/v1/common", tags=["common"])
 GEOJSON_TTL = 3600
 ALERTS_TTL = 3600
 STATS_TTL = 21600
+TIMELINE_TTL = 86400  # 24h — historical data, rarely changes
 
 SeverityType = Literal["EXTREMEMENT_BAS", "TRES_BAS", "BAS", "HAUT", "TRES_HAUT", "EXTREMEMENT_HAUT"]
 
@@ -456,3 +457,99 @@ async def get_department_stats(db: AsyncSession = Depends(get_db)):
             return [dict(row) for row in result.mappings().all()]
 
     return await cached_response("department_stats", {}, STATS_TTL, fetch)
+
+
+@router.get("/classifications/timeline")
+async def get_classification_timeline():
+    """Monthly classification timeline for all stations.
+
+    Uses calendar-month percentile ranking: each month's value is compared
+    against all values for the *same calendar month* across all years,
+    removing seasonality effects.
+
+    Returns compact format: periods[] + stations dict with integer arrays.
+    Classification codes: 0=EXTREMEMENT_BAS, 1=TRES_BAS, 2=BAS, 3=NORMAL,
+    4=HAUT, 5=TRES_HAUT, 6=EXTREMEMENT_HAUT, 7=UNKNOWN.
+    """
+
+    async def fetch():
+        # Run both queries in parallel, each with its own session
+        async def run_piezo():
+            async with async_session() as session:
+                return await session.execute(text("""
+                    WITH ranked AS (
+                        SELECT code_bss AS code,
+                               TO_CHAR(mois, 'YYYY-MM') AS period,
+                               PERCENT_RANK() OVER (
+                                   PARTITION BY code_bss, EXTRACT(MONTH FROM mois)
+                                   ORDER BY niveau_moyen
+                               ) AS pctile
+                        FROM gold.fct_monthly_chroniques
+                        WHERE niveau_moyen IS NOT NULL AND mois >= '2000-01-01'
+                    )
+                    SELECT code, period,
+                        CASE
+                            WHEN pctile < 0.05 THEN 0
+                            WHEN pctile < 0.10 THEN 1
+                            WHEN pctile < 0.25 THEN 2
+                            WHEN pctile < 0.75 THEN 3
+                            WHEN pctile < 0.90 THEN 4
+                            WHEN pctile < 0.95 THEN 5
+                            ELSE 6
+                        END AS cls
+                    FROM ranked
+                    ORDER BY code, period
+                """))
+
+        async def run_hydro():
+            async with async_session() as session:
+                return await session.execute(text("""
+                    WITH ranked AS (
+                        SELECT code_station AS code,
+                               TO_CHAR(mois, 'YYYY-MM') AS period,
+                               PERCENT_RANK() OVER (
+                                   PARTITION BY code_station, EXTRACT(MONTH FROM mois)
+                                   ORDER BY resultat_moyen
+                               ) AS pctile
+                        FROM gold.fct_monthly_hydro
+                        WHERE resultat_moyen IS NOT NULL AND mois >= '2000-01-01'
+                    )
+                    SELECT code, period,
+                        CASE
+                            WHEN pctile < 0.05 THEN 0
+                            WHEN pctile < 0.10 THEN 1
+                            WHEN pctile < 0.25 THEN 2
+                            WHEN pctile < 0.75 THEN 3
+                            WHEN pctile < 0.90 THEN 4
+                            WHEN pctile < 0.95 THEN 5
+                            ELSE 6
+                        END AS cls
+                    FROM ranked
+                    ORDER BY code, period
+                """))
+
+        piezo_result, hydro_result = await asyncio.gather(run_piezo(), run_hydro())
+
+        # Collect all unique periods and build per-station dicts
+        periods_set: set[str] = set()
+        station_periods: dict[str, dict[str, int]] = {}
+
+        for row in piezo_result.mappings():
+            periods_set.add(row["period"])
+            station_periods.setdefault(row["code"], {})[row["period"]] = row["cls"]
+
+        for row in hydro_result.mappings():
+            periods_set.add(row["period"])
+            station_periods.setdefault(row["code"], {})[row["period"]] = row["cls"]
+
+        periods = sorted(periods_set)
+
+        # Convert to compact arrays (7 = UNKNOWN for missing periods)
+        stations = {
+            code: [vals.get(p, 7) for p in periods]
+            for code, vals in station_periods.items()
+        }
+
+        return {"periods": periods, "stations": stations}
+
+    return await cached_response("timeline", {}, TIMELINE_TTL, fetch)

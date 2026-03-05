@@ -9,7 +9,7 @@ from app.cache import cached_response
 from app.classification import get_classification_lookup
 from app.database import get_db
 from app.models.piezo import (
-    PiezoDaily, PiezoMonthly, PiezoPercentiles, PiezoSPLI, PiezoSPI, PiezoStation, PiezoTrend, PiezoYearly,
+    PiezoBasinSiblings, PiezoDaily, PiezoMonthly, PiezoPercentiles, PiezoSPLI, PiezoSPI, PiezoStation, PiezoTrend, PiezoYearly,
 )
 from app.drought import compute_spli, compute_spi
 
@@ -326,6 +326,91 @@ async def get_spi(
         return compute_spi(months, values)
 
     return await cached_response("piezo_spi", {"code_bss": code_bss}, SPLI_TTL, fetch)
+
+
+SIBLINGS_TTL = 3600
+
+
+@router.get("/stations/{code_bss:path}/siblings", response_model=PiezoBasinSiblings)
+async def get_siblings(
+    code_bss: str,
+    limit: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return other piezo stations in the same BDLISA groundwater body, sorted by distance."""
+
+    async def fetch():
+        # Get the station's BDLISA code and position
+        result = await db.execute(
+            text("SELECT codes_bdlisa, latitude, longitude FROM gold.dim_piezo_stations WHERE code_bss = :code"),
+            {"code": code_bss},
+        )
+        row = result.mappings().first()
+        if not row:
+            raise HTTPException(404, f"Piezo station {code_bss} not found")
+        codes_bdlisa = row["codes_bdlisa"]
+        if not codes_bdlisa:
+            raise HTTPException(404, f"No BDLISA code for station {code_bss}")
+
+        bdlisa_code = codes_bdlisa.split(",")[0].strip()
+        ref_lat = row["latitude"] or 0.0
+        ref_lon = row["longitude"] or 0.0
+
+        # Find siblings (same BDLISA prefix)
+        query = """
+            SELECT code_bss, nom_commune, code_departement, classification_derniere_annee,
+                   derniere_mesure, latitude, longitude
+            FROM gold.dim_piezo_stations
+            WHERE codes_bdlisa IS NOT NULL
+              AND codes_bdlisa LIKE :bdlisa_pattern
+              AND code_bss != :code
+            ORDER BY code_bss
+        """
+        result = await db.execute(text(query), {"bdlisa_pattern": f"{bdlisa_code}%", "code": code_bss})
+        siblings = [dict(r) for r in result.mappings().all()]
+
+        # Overlay computed classifications
+        lookup = await get_classification_lookup()
+        for s in siblings:
+            if lookup:
+                computed = lookup.get("piezo", {}).get(s["code_bss"])
+                if computed and computed != "UNKNOWN":
+                    s["classification_derniere_annee"] = computed
+
+        # Compute approximate distance and sort
+        import math
+        for s in siblings:
+            lat = s.get("latitude") or 0.0
+            lon = s.get("longitude") or 0.0
+            dlat = math.radians(lat - ref_lat)
+            dlon = math.radians(lon - ref_lon) * math.cos(math.radians((ref_lat + lat) / 2))
+            s["distance_km"] = round(math.sqrt(dlat**2 + dlon**2) * 6371, 1)
+
+        siblings.sort(key=lambda s: s["distance_km"])
+        nb_total = len(siblings)
+        siblings = siblings[:limit]
+
+        # Get BDLISA basin name from the static GeoJSON (loaded client-side)
+        # We return code only; frontend has the GeoJSON for name/nature lookup
+        return {
+            "code_bdlisa": bdlisa_code,
+            "nom_bdlisa": None,
+            "nature_bdlisa": None,
+            "nb_stations": nb_total + 1,  # include the station itself
+            "siblings": [
+                {
+                    "code_bss": s["code_bss"],
+                    "nom_commune": s.get("nom_commune"),
+                    "code_departement": s.get("code_departement"),
+                    "classification": s.get("classification_derniere_annee"),
+                    "derniere_mesure": s.get("derniere_mesure"),
+                    "distance_km": s["distance_km"],
+                }
+                for s in siblings
+            ],
+        }
+
+    return await cached_response("piezo_siblings", {"code_bss": code_bss, "limit": limit}, SIBLINGS_TTL, fetch)
 
 
 @router.get("/stations/{code_bss:path}", response_model=PiezoStation)

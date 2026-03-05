@@ -111,3 +111,20 @@ class PiezoSPI(BaseModel):
     value: float | None = None
     spi: float | None = None
     classification: str = "UNKNOWN"
+
+
+class PiezoSiblingStation(BaseModel):
+    code_bss: str
+    nom_commune: str | None = None
+    code_departement: str | None = None
+    classification: str | None = None
+    derniere_mesure: date | None = None
+    distance_km: float | None = None
+
+
+class PiezoBasinSiblings(BaseModel):
+    code_bdlisa: str
+    nom_bdlisa: str | None = None
+    nature_bdlisa: str | None = None
+    nb_stations: int
+    siblings: list[PiezoSiblingStation]

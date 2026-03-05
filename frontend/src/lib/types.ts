@@ -95,6 +95,39 @@ export interface YearlyHydroData {
   precipitation_totale_annuelle: number | null
 }
 
+// Sibling/grouping types
+export interface PiezoSiblingStation {
+  code_bss: string
+  nom_commune: string | null
+  code_departement: string | null
+  classification: string | null
+  derniere_mesure: string | null
+  distance_km: number | null
+}
+
+export interface PiezoBasinSiblings {
+  code_bdlisa: string
+  nom_bdlisa: string | null
+  nature_bdlisa: string | null
+  nb_stations: number
+  siblings: PiezoSiblingStation[]
+}
+
+export interface HydroSiblingStation {
+  code_station: string
+  libelle_station: string | null
+  grandeur_hydro_principale: string | null
+  classification: string | null
+  derniere_mesure: string | null
+}
+
+export interface HydroSiteSiblings {
+  code_site: string
+  libelle_site: string | null
+  nom_cours_eau: string | null
+  siblings: HydroSiblingStation[]
+}
+
 // Drought index types
 export interface SPIDataPoint {
   mois: string
@@ -228,6 +261,17 @@ export interface HydroTrend {
   classification_tendance: string | null
   projection_variation_5ans: number | null
 }
+
+// Timeline
+export interface ClassificationTimeline {
+  periods: string[]  // ['2005-01', '2005-02', ...]
+  stations: Record<string, number[]>  // code -> array of classification indices per period
+}
+
+// Classification codes for timeline: 0=EXTREMEMENT_BAS...6=EXTREMEMENT_HAUT, 7=UNKNOWN
+export const TIMELINE_CLASSIFICATIONS = [
+  'EXTREMEMENT_BAS', 'TRES_BAS', 'BAS', 'NORMAL', 'HAUT', 'TRES_HAUT', 'EXTREMEMENT_HAUT', 'UNKNOWN',
+] as const
 
 // Classification
 export type Classification = 'EXTREMEMENT_BAS' | 'TRES_BAS' | 'BAS' | 'NORMAL' | 'HAUT' | 'TRES_HAUT' | 'EXTREMEMENT_HAUT' | 'UNKNOWN'

@@ -3,43 +3,61 @@ import { ObservatoryMap } from '../components/map/ObservatoryMap'
 import { StationDrawer } from '../components/map/StationDrawer'
 import { KPIBar } from '../components/map/KPIBar'
 import { SearchBar } from '../components/map/SearchBar'
+import type { SearchAction } from '../components/map/SearchBar'
+import { TimelineSlider } from '../components/map/TimelineSlider'
 import { RightDrawer } from '../components/map/RightDrawer'
 import { useStationsGeoJSON } from '../hooks/useStations'
 import { useWfsLayer } from '../hooks/useWfsLayer'
 import { LAYER_GROUPS } from '../lib/layerConfig'
-import type { StationGeoJSONFeature, WfsLayerId } from '../lib/types'
+import type { StationGeoJSONFeature, WfsLayerId, ClassificationTimeline } from '../lib/types'
+import { TIMELINE_CLASSIFICATIONS } from '../lib/types'
 import { useFilters } from '../hooks/useFilters'
 
 type Bbox = [number, number, number, number] // [minLon, minLat, maxLon, maxLat]
 
-/** Check if any coordinate of a GeoJSON feature intersects a bbox */
+/* ------------------------------------------------------------------ */
+/*  Geometry helpers                                                   */
+/* ------------------------------------------------------------------ */
+
+function computeBboxFromGeometry(geometry: any): Bbox {
+  const coords: number[][] = []
+  const collect = (g: any) => {
+    if (!g) return
+    switch (g.type) {
+      case 'Point': coords.push(g.coordinates); break
+      case 'LineString': g.coordinates.forEach((c: number[]) => coords.push(c)); break
+      case 'MultiLineString': g.coordinates.forEach((line: number[][]) => line.forEach((c: number[]) => coords.push(c))); break
+      case 'Polygon': g.coordinates[0].forEach((c: number[]) => coords.push(c)); break
+      case 'MultiPolygon': g.coordinates.forEach((p: number[][][]) => p[0].forEach((c: number[]) => coords.push(c))); break
+    }
+  }
+  collect(geometry)
+  if (coords.length === 0) return [-5, 41, 10, 51]
+  if (coords.length === 1) {
+    // Single point: create a small bbox around it
+    const [lon, lat] = coords[0]
+    return [lon - 0.15, lat - 0.1, lon + 0.15, lat + 0.1]
+  }
+  const lons = coords.map(c => c[0])
+  const lats = coords.map(c => c[1])
+  return [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)]
+}
+
 function featureIntersectsBbox(feature: any, bbox: Bbox): boolean {
   const [minLon, minLat, maxLon, maxLat] = bbox
   const coords: number[][] = []
-
   const collectCoords = (geom: any) => {
     if (!geom) return
     switch (geom.type) {
-      case 'Point':
-        coords.push(geom.coordinates)
-        break
+      case 'Point': coords.push(geom.coordinates); break
       case 'LineString':
-      case 'MultiPoint':
-        geom.coordinates.forEach((c: number[]) => coords.push(c))
-        break
+      case 'MultiPoint': geom.coordinates.forEach((c: number[]) => coords.push(c)); break
       case 'Polygon':
-      case 'MultiLineString':
-        geom.coordinates.forEach((ring: number[][]) => ring.forEach((c: number[]) => coords.push(c)))
-        break
-      case 'MultiPolygon':
-        geom.coordinates.forEach((poly: number[][][]) =>
-          poly.forEach((ring: number[][]) => ring.forEach((c: number[]) => coords.push(c)))
-        )
-        break
+      case 'MultiLineString': geom.coordinates.forEach((ring: number[][]) => ring.forEach((c: number[]) => coords.push(c))); break
+      case 'MultiPolygon': geom.coordinates.forEach((poly: number[][][]) => poly.forEach((ring: number[][]) => ring.forEach((c: number[]) => coords.push(c)))); break
     }
   }
   collectCoords(feature.geometry)
-  // Check if any coordinate falls within the bbox (with some margin)
   const margin = 0.1
   return coords.some(c =>
     c[0] >= minLon - margin && c[0] <= maxLon + margin &&
@@ -49,14 +67,56 @@ function featureIntersectsBbox(feature: any, bbox: Bbox): boolean {
 
 function filterGeoJSONByBbox(geojson: any, bbox: Bbox): any {
   if (!geojson?.features) return geojson
-  return {
-    ...geojson,
-    features: geojson.features.filter((f: any) => featureIntersectsBbox(f, bbox)),
-  }
+  return { ...geojson, features: geojson.features.filter((f: any) => featureIntersectsBbox(f, bbox)) }
 }
 
+/* ------------------------------------------------------------------ */
+/*  Point-in-polygon for spatial filtering from search                 */
+/* ------------------------------------------------------------------ */
+
+function pointInRing(x: number, y: number, ring: number[][]): boolean {
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1]
+    const xj = ring[j][0], yj = ring[j][1]
+    if (((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi)) inside = !inside
+  }
+  return inside
+}
+
+function pointInGeometry(lon: number, lat: number, geometry: any): boolean {
+  if (geometry.type === 'Polygon') {
+    const [outer, ...holes] = geometry.coordinates
+    if (!pointInRing(lon, lat, outer)) return false
+    for (const hole of holes) { if (pointInRing(lon, lat, hole)) return false }
+    return true
+  }
+  if (geometry.type === 'MultiPolygon') {
+    return geometry.coordinates.some((poly: number[][][]) => {
+      const [outer, ...holes] = poly
+      if (!pointInRing(lon, lat, outer)) return false
+      for (const hole of holes) { if (pointInRing(lon, lat, hole)) return false }
+      return true
+    })
+  }
+  return false
+}
+
+function stationsInGeometry(features: StationGeoJSONFeature[], geometry: any): string[] {
+  return features
+    .filter(f => {
+      const [lon, lat] = f.geometry.coordinates
+      return lon != null && lat != null && pointInGeometry(lon, lat, geometry)
+    })
+    .map(f => f.properties.code)
+}
+
+/* ------------------------------------------------------------------ */
+/*  Page component                                                     */
+/* ------------------------------------------------------------------ */
+
 export default function ObservatoryPage() {
-  const { filters, setFilter } = useFilters()
+  const { filters, setFilter, setFilters } = useFilters()
   const { data: geojsonData, isError: geojsonError } = useStationsGeoJSON()
   const filteredFeatures = useMemo<StationGeoJSONFeature[]>(() => {
     const all = geojsonData?.features ?? []
@@ -86,13 +146,18 @@ export default function ObservatoryPage() {
   const [showPiezo, setShowPiezo] = useState(true)
   const [showHydro, setShowHydro] = useState(true)
 
-  const [showRegions, setShowRegions] = useState(false)
+  const [showRegions, setShowRegions] = useState(true)
   const [showDepts, setShowDepts] = useState(false)
   const [showHER, setShowHER] = useState(false)
   const [showSandre, setShowSandre] = useState(false)
 
   const [activeWfsLayers, setActiveWfsLayers] = useState<Set<WfsLayerId>>(new Set())
   const [activeBbox, setActiveBbox] = useState<Bbox | null>(null)
+  const [flyToBbox, setFlyToBbox] = useState<Bbox | null>(null)
+
+  // Timeline state
+  const [timelinePeriodIndex, setTimelinePeriodIndex] = useState<number | null>(null)
+  const [timelineData, setTimelineData] = useState<ClassificationTimeline | null>(null)
 
   const handleToggleWfsLayer = useCallback((layerId: WfsLayerId, groupId: string) => {
     setActiveWfsLayers(prev => {
@@ -109,6 +174,19 @@ export default function ObservatoryPage() {
     })
   }, [])
 
+  /** Activate a WFS layer (always add, never toggle off) */
+  const activateWfsLayer = useCallback((layerId: WfsLayerId) => {
+    setActiveWfsLayers(prev => {
+      const next = new Set(prev)
+      const group = LAYER_GROUPS.find(g => g.layers.some(l => l.id === layerId))
+      if (group?.mode === 'radio') {
+        group.layers.forEach(l => next.delete(l.id))
+      }
+      next.add(layerId)
+      return next
+    })
+  }, [])
+
   // Preload all WFS layers on mount so toggling is instant
   const regionHydro = useWfsLayer('region-hydro', true)
   const secteurHydro = useWfsLayer('secteur-hydro', true)
@@ -119,7 +197,8 @@ export default function ObservatoryPage() {
   const planEau = useWfsLayer('plan-eau', true)
   const masseEauRiv = useWfsLayer('masse-eau-riv', true)
 
-  const wfsData = useMemo(() => {
+  // Raw WFS data (unfiltered) — used by SearchBar for searching all features
+  const wfsDataAll = useMemo(() => {
     const raw: Record<string, any> = {}
     if (regionHydro.data) raw['region-hydro'] = regionHydro.data
     if (secteurHydro.data) raw['secteur-hydro'] = secteurHydro.data
@@ -129,32 +208,37 @@ export default function ObservatoryPage() {
     if (coursEau2.data) raw['cours-eau-2'] = coursEau2.data
     if (planEau.data) raw['plan-eau'] = planEau.data
     if (masseEauRiv.data) raw['masse-eau-riv'] = masseEauRiv.data
+    return raw
+  }, [regionHydro.data, secteurHydro.data, sousSecteurHydro.data, zoneHydro.data,
+      coursEau1.data, coursEau2.data, planEau.data, masseEauRiv.data])
 
-    // Filter by active bbox if a spatial selection is active
-    if (!activeBbox) return raw
+  // Filtered WFS data for map display (bbox-filtered when spatial selection active)
+  const wfsData = useMemo(() => {
+    if (!activeBbox) return wfsDataAll
     const filtered: Record<string, any> = {}
-    for (const [key, data] of Object.entries(raw)) {
+    for (const [key, data] of Object.entries(wfsDataAll)) {
       filtered[key] = filterGeoJSONByBbox(data, activeBbox)
     }
     return filtered
-  }, [regionHydro.data, secteurHydro.data, sousSecteurHydro.data, zoneHydro.data,
-      coursEau1.data, coursEau2.data, planEau.data, masseEauRiv.data, activeBbox])
+  }, [wfsDataAll, activeBbox])
 
   const handleStationClick = useCallback((code: string, type: 'piezo' | 'hydro') => {
     setSelectedStation({ code, type })
   }, [])
 
+  const handleEmptyClick = useCallback(() => {
+    setSelectedStation(null)
+  }, [])
+
   const handleDeptClick = useCallback((code: string | null) => {
-    setFilter('dept', code ?? undefined)
-    setFilter('stations', undefined)
+    setFilters({ dept: code ?? undefined, stations: undefined })
     if (!code) setActiveBbox(null)
-  }, [setFilter])
+  }, [setFilters])
 
   const handleBassinClick = useCallback((code: string | null) => {
-    setFilter('bassin', code ?? undefined)
-    setFilter('stations', undefined)
+    setFilters({ bassin: code ?? undefined, stations: undefined })
     if (!code) setActiveBbox(null)
-  }, [setFilter])
+  }, [setFilters])
 
   const handleSpatialFilter = useCallback((codes: string[] | null) => {
     setFilter('stations', codes ?? undefined)
@@ -164,6 +248,119 @@ export default function ObservatoryPage() {
   const handleBboxChange = useCallback((bbox: Bbox | null) => {
     setActiveBbox(bbox)
   }, [])
+
+  // Timeline period change handler
+  const handleTimelinePeriodChange = useCallback((periodIndex: number | null, timeline: ClassificationTimeline | null) => {
+    setTimelinePeriodIndex(periodIndex)
+    setTimelineData(timeline)
+  }, [])
+
+  // Features with timeline classification override
+  const displayFeatures = useMemo<StationGeoJSONFeature[]>(() => {
+    if (timelinePeriodIndex == null || !timelineData) return filteredFeatures
+    return filteredFeatures.map(f => {
+      const arr = timelineData.stations[f.properties.code]
+      if (!arr) return f
+      const cls = TIMELINE_CLASSIFICATIONS[arr[timelinePeriodIndex]] ?? null
+      if (cls === f.properties.classification) return f
+      return {
+        ...f,
+        properties: { ...f.properties, classification: cls === 'UNKNOWN' ? null : cls },
+      }
+    })
+  }, [filteredFeatures, timelinePeriodIndex, timelineData])
+
+  // Universal search action handler
+  const handleSearchAction = useCallback((action: SearchAction) => {
+    switch (action.kind) {
+      case 'station':
+        setSelectedStation({ code: action.code, type: action.stationType! })
+        if (action.geometry) {
+          setFlyToBbox(computeBboxFromGeometry(action.geometry))
+        }
+        break
+
+      case 'department':
+        // Switch to dept layer only
+        setShowRegions(false); setShowDepts(true); setShowHER(false); setShowSandre(false)
+        setFilters({ dept: action.code, bassin: undefined, stations: undefined })
+        if (action.geometry) {
+          const bbox = computeBboxFromGeometry(action.geometry)
+          setActiveBbox(bbox)
+          setFlyToBbox(bbox)
+        }
+        break
+
+      case 'region': {
+        // Switch to region layer only
+        setShowRegions(true); setShowDepts(false); setShowHER(false); setShowSandre(false)
+        if (action.geometry) {
+          const bbox = computeBboxFromGeometry(action.geometry)
+          setActiveBbox(bbox)
+          setFlyToBbox(bbox)
+          const codes = stationsInGeometry(geojsonData?.features ?? [], action.geometry)
+          setFilters({ dept: undefined, bassin: undefined, stations: codes.length > 0 ? codes : undefined })
+        }
+        break
+      }
+
+      case 'bassin': {
+        // Switch to bassin layer only
+        setShowRegions(false); setShowDepts(false); setShowHER(false); setShowSandre(true)
+        if (action.geometry) {
+          const bbox = computeBboxFromGeometry(action.geometry)
+          setActiveBbox(bbox)
+          setFlyToBbox(bbox)
+          const codes = stationsInGeometry(geojsonData?.features ?? [], action.geometry)
+          setFilters({ bassin: action.code, dept: undefined, stations: codes.length > 0 ? codes : undefined })
+        }
+        break
+      }
+
+      case 'her': {
+        // Switch to HER layer only
+        setShowRegions(false); setShowDepts(false); setShowHER(true); setShowSandre(false)
+        if (action.geometry) {
+          const bbox = computeBboxFromGeometry(action.geometry)
+          setActiveBbox(bbox)
+          setFlyToBbox(bbox)
+          const codes = stationsInGeometry(geojsonData?.features ?? [], action.geometry)
+          setFilters({ dept: undefined, bassin: undefined, stations: codes.length > 0 ? codes : undefined })
+        }
+        break
+      }
+
+      case 'bdlisa': {
+        // Keep current layers, just zoom + filter
+        if (action.geometry) {
+          const bbox = computeBboxFromGeometry(action.geometry)
+          setActiveBbox(bbox)
+          setFlyToBbox(bbox)
+          const codes = stationsInGeometry(geojsonData?.features ?? [], action.geometry)
+          setFilters({ dept: undefined, bassin: undefined, stations: codes.length > 0 ? codes : undefined })
+        }
+        break
+      }
+
+      case 'wfs':
+        if (action.wfsLayerId) {
+          activateWfsLayer(action.wfsLayerId)
+        }
+        if (action.geometry) {
+          setFlyToBbox(computeBboxFromGeometry(action.geometry))
+        }
+        break
+    }
+  }, [setFilters, activateWfsLayer, geojsonData])
+
+  // Compute the BDLISA basin code for the selected piezo station (for map highlighting)
+  const highlightedBasinCode = useMemo(() => {
+    if (!selectedStation || selectedStation.type !== 'piezo') return null
+    const feat = (geojsonData?.features ?? []).find(f => f.properties.code === selectedStation.code)
+    const bdlisa = feat?.properties?.codes_bdlisa
+    if (!bdlisa) return null
+    return bdlisa.split(',')[0].trim()
+  }, [selectedStation, geojsonData])
 
   const stationCounts = useMemo(() => {
     const all = geojsonData?.features ?? []
@@ -179,15 +376,16 @@ export default function ObservatoryPage() {
     <div className="relative h-full">
       {geojsonError && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-red-900/90 text-red-200 px-4 py-2 rounded-lg text-sm">
-          Erreur lors du chargement des stations. <button onClick={() => window.location.reload()} className="underline ml-2">Réessayer</button>
+          Erreur lors du chargement des stations. <button onClick={() => window.location.reload()} className="underline ml-2">Reessayer</button>
         </div>
       )}
 
       <ObservatoryMap
-        features={filteredFeatures}
+        features={displayFeatures}
         showPiezo={showPiezo}
         showHydro={showHydro}
         onStationClick={handleStationClick}
+        onEmptyClick={handleEmptyClick}
         onDeptClick={handleDeptClick}
         activeCodeDepartement={filters.codeDepartement}
         showRegions={showRegions}
@@ -200,11 +398,16 @@ export default function ObservatoryPage() {
         onBboxChange={handleBboxChange}
         activeWfsLayers={activeWfsLayers}
         wfsData={wfsData}
+        highlightedBasinCode={highlightedBasinCode}
+        selectedStationCode={selectedStation?.code ?? null}
+        flyToBbox={flyToBbox}
+        onFlyToComplete={() => setFlyToBbox(null)}
       />
 
       <SearchBar
         features={geojsonData?.features}
-        onSelect={handleStationClick}
+        wfsData={wfsDataAll}
+        onSearchAction={handleSearchAction}
       />
 
       <RightDrawer
@@ -235,6 +438,8 @@ export default function ObservatoryPage() {
           onClose={() => setSelectedStation(null)}
         />
       )}
+
+      <TimelineSlider onPeriodChange={handleTimelinePeriodChange} />
 
       <KPIBar
         filteredPiezo={stationCounts.filteredPiezo}

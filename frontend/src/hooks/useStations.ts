@@ -40,6 +40,26 @@ export function useStationsGeoJSON() {
   })
 }
 
+export function usePiezoSiblings(code: string) {
+  return useQuery({
+    queryKey: ['siblings', 'piezo', code],
+    queryFn: () => api.piezo.siblings(code),
+    enabled: !!code,
+    staleTime: 3_600_000,
+    retry: false,
+  })
+}
+
+export function useHydroSiblings(code: string) {
+  return useQuery({
+    queryKey: ['siblings', 'hydro', code],
+    queryFn: () => api.hydro.siblings(code),
+    enabled: !!code,
+    staleTime: 3_600_000,
+    retry: false,
+  })
+}
+
 export function useBdlisaLookup() {
   const { data } = useQuery({
     queryKey: ['bdlisa-geojson'],
