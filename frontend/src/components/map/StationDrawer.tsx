@@ -3,7 +3,7 @@ import { X, ExternalLink, TrendingUp, TrendingDown, Minus, Droplets, Waves } fro
 import { ClassificationBadge } from '../station/ClassificationBadge'
 import { formatNumber, formatDate } from '../../lib/utils'
 import { CLASSIFICATION_COLORS } from '../../lib/constants'
-import { usePiezoStationDetail, useHydroStationDetail, useBdlisaLookup, usePiezoSiblings, useHydroSiblings } from '../../hooks/useStations'
+import { usePiezoStationDetail, useHydroStationDetail, usePiezoSiblings, useHydroSiblings } from '../../hooks/useStations'
 
 interface Props {
   code: string
@@ -67,7 +67,6 @@ export function StationDrawer({ code, type, onClose }: Props) {
   const piezoQuery = usePiezoStationDetail(isPiezo ? code : '')
   const hydroQuery = useHydroStationDetail(!isPiezo ? code : '')
   const { data: station, isLoading, isError } = isPiezo ? piezoQuery : hydroQuery
-  const bdlisaLookup = useBdlisaLookup()
 
   const stationCode = isPiezo
     ? (station as any)?.code_bss ?? code
@@ -91,7 +90,6 @@ export function StationDrawer({ code, type, onClose }: Props) {
     if (isLoading || !station) return <DrawerSkeleton onClose={onClose} />
 
     const s = station as any
-    const bdlisa = isPiezo ? bdlisaLookup(s.codes_bdlisa) : null
     const name = isPiezo
       ? (s.nom_commune || s.code_bss)
       : (s.libelle_station || s.code_station)
@@ -255,15 +253,12 @@ export function StationDrawer({ code, type, onClose }: Props) {
         )}
 
         {/* ── Contexte hydrogéologique ── */}
-        {(bdlisa?.nature || (isPiezo && s.codes_bdlisa) || (!isPiezo && s.code_cours_eau)) && (
+        {((isPiezo && s.codes_bdlisa) || (!isPiezo && s.code_cours_eau)) && (
           <div className="bg-white/[0.03] rounded-lg p-3 border border-white/5">
             <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-2">
               {isPiezo ? 'Hydrogéologie' : 'Réseau hydrographique'}
             </div>
             <div className="divide-y divide-white/5">
-              {isPiezo && bdlisa?.nature && (
-                <InfoRow label="Aquifère" value={bdlisa.nature} />
-              )}
               {isPiezo && s.codes_bdlisa && (
                 <InfoRow
                   label="Code BDLISA"
@@ -311,7 +306,7 @@ export function StationDrawer({ code, type, onClose }: Props) {
               Nappe souterraine · {piezoSiblings.data.nb_stations} stations
             </div>
             <p className="text-xs text-text-primary mb-2 font-medium">
-              {bdlisa?.nature ? `${bdlisa.nature} — ` : ''}{piezoSiblings.data.code_bdlisa}
+              {piezoSiblings.data.code_bdlisa}
             </p>
             <div className="space-y-1 max-h-32 overflow-y-auto">
               {piezoSiblings.data.siblings.slice(0, 5).map(sib => (

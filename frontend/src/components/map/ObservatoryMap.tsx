@@ -72,6 +72,7 @@ interface Props {
   activeWfsLayers?: Set<WfsLayerId>
   wfsData?: Record<string, any>
   highlightedBasinCode?: string | null
+  selectedPiezoCoords?: { lat: number; lon: number; code: string } | null
   selectedStationCode?: string | null
   flyToBbox?: [number, number, number, number] | null
   onFlyToComplete?: () => void
@@ -324,6 +325,7 @@ export function ObservatoryMap({
   activeWfsLayers = new Set() as Set<WfsLayerId>,
   wfsData,
   highlightedBasinCode = null,
+  selectedPiezoCoords = null,
   selectedStationCode = null,
   flyToBbox = null,
   onFlyToComplete,
@@ -365,7 +367,6 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
   onBboxChangeRef.current = onBboxChange
 
   const [tooltip, setTooltip] = useState<{ name: string; x: number; y: number } | null>(null)
-  const bdlisaCacheRef = useRef<any>(null)
 
   // Refs for show* props — used inside async fetch callbacks to get current value
   const showRegionsRef = useRef(showRegions)
@@ -803,13 +804,10 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
       adminFills.forEach(id => { if (map.getLayer(id)) map.setPaintProperty(id, 'fill-opacity', 0.03) })
       adminLines.forEach(id => { if (map.getLayer(id)) map.setPaintProperty(id, 'line-opacity', 0.1) })
 
-      // Show BDLISA polygon for this basin
-      const showBdlisa = (data: any) => {
+      // Fetch BDLISA NV3 polygon from backend API
+      const showBdlisaPolygon = (polygon: any) => {
         if (!mapRef.current) return
-        const matching = data.features.filter((f: any) =>
-          f.properties?.code && highlightedBasinCode.startsWith(f.properties.code)
-        )
-        const fc = { type: 'FeatureCollection', features: matching }
+        const fc = { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: polygon }] }
         if (!map.getSource('bdlisa-highlight')) {
           map.addSource('bdlisa-highlight', { type: 'geojson', data: fc as any })
           map.addLayer({
@@ -831,12 +829,11 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
           if (map.getLayer('bdlisa-highlight-line')) map.setLayoutProperty('bdlisa-highlight-line', 'visibility', 'visible')
         }
       }
-      if (bdlisaCacheRef.current) {
-        showBdlisa(bdlisaCacheRef.current)
-      } else {
-        fetch('/geo/bdlisa.geojson')
-          .then(r => r.json())
-          .then(data => { bdlisaCacheRef.current = data; showBdlisa(data) })
+      if (selectedPiezoCoords) {
+        fetch(`/api/v1/bdlisa/polygon?lat=${selectedPiezoCoords.lat}&lon=${selectedPiezoCoords.lon}`)
+          .then(r => r.ok ? r.json() : null)
+          .then(data => { if (data?.polygon) showBdlisaPolygon(data.polygon) })
+          .catch(() => {})
       }
     } else {
       // Restore normal opacity
@@ -871,7 +868,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
       if (map.getLayer('bdlisa-highlight-fill')) map.setLayoutProperty('bdlisa-highlight-fill', 'visibility', 'none')
       if (map.getLayer('bdlisa-highlight-line')) map.setLayoutProperty('bdlisa-highlight-line', 'visibility', 'none')
     }
-  }, [highlightedBasinCode])
+  }, [highlightedBasinCode, selectedPiezoCoords])
 
   // Highlight selected station with a ring
   useEffect(() => {

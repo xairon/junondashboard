@@ -92,4 +92,8 @@ export const api = {
     layer: (layerId: string, bbox?: string) =>
       fetchJson<any>(`/wfs/${layerId}`, bbox ? { bbox } : undefined),
   },
+  bdlisa: {
+    polygon: (lat: number, lon: number) =>
+      fetchJson<{ polygon: GeoJSON.MultiPolygon }>('/bdlisa/polygon', { lat: String(lat), lon: String(lon) }),
+  },
 }

@@ -13,7 +13,7 @@ from app.classification import warm_classification_cache
 from app.config import settings
 from app.database import engine, get_db
 from app.json_response import FastJSONResponse
-from app.routers import piezo, hydro, common, era5, wfs
+from app.routers import piezo, hydro, common, era5, wfs, bdlisa
 
 
 @asynccontextmanager
@@ -31,6 +31,7 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(warm_classification_cache())
     yield
     await wfs.close_http_client()
+    await bdlisa.close_bdlisa_client()
     if redis_pool is not None:
         await redis_pool.aclose()
     await engine.dispose()
@@ -58,6 +59,7 @@ app.include_router(hydro.router)
 app.include_router(common.router)
 app.include_router(era5.router)
 app.include_router(wfs.router)
+app.include_router(bdlisa.router)
 
 
 @app.get("/api/v1/health")

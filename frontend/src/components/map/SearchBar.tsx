@@ -8,7 +8,7 @@ import type { StationGeoJSONFeature, WfsLayerId } from '../../lib/types'
 /* ------------------------------------------------------------------ */
 
 export interface SearchAction {
-  kind: 'station' | 'department' | 'region' | 'bassin' | 'her' | 'bdlisa' | 'wfs'
+  kind: 'station' | 'department' | 'region' | 'bassin' | 'her' | 'wfs'
   code: string
   label: string
   stationType?: 'piezo' | 'hydro'
@@ -65,7 +65,7 @@ const WFS_SEARCH: Record<string, { nameField: string; codeField: string; badge: 
 /*  Category ordering (for stable display)                             */
 /* ------------------------------------------------------------------ */
 const CATEGORY_ORDER = [
-  'station', 'department', 'region', 'bassin', 'bdlisa', 'her', 'wfs',
+  'station', 'department', 'region', 'bassin', 'her', 'wfs',
 ] as const
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -73,7 +73,6 @@ const CATEGORY_LABELS: Record<string, string> = {
   department: 'Departements',
   region: 'Regions',
   bassin: 'Bassins hydrographiques',
-  bdlisa: 'Nappes souterraines',
   her: 'Hydroecoregions',
   wfs: 'Hydrographie',
 }
@@ -94,7 +93,6 @@ export function SearchBar({ features, wfsData, onSearchAction }: Props) {
   const { data: regionsGeo } = useGeoJSON<{ features: Array<{ properties: { code: string; nom: string }; geometry: any }> }>('/geo/regions.geojson')
   const { data: bassinsGeo } = useGeoJSON<{ features: Array<{ properties: { CdBH: string; LbBH: string }; geometry: any }> }>('/geo/bassins.geojson')
   const { data: herGeo } = useGeoJSON<{ features: Array<{ properties: { code: number; nom: string; nom_her1?: string }; geometry: any }> }>('/geo/her.geojson')
-  const { data: bdlisaGeo } = useGeoJSON<{ features: Array<{ properties: { code: string; nom: string; nature?: string }; geometry: any }> }>('/geo/bdlisa.geojson')
 
   // Click-outside handler
   useEffect(() => {
@@ -194,25 +192,6 @@ export function SearchBar({ features, wfsData, onSearchAction }: Props) {
       }
     }
 
-    // --- BDLISA (nappes) ---
-    let bdlisaCount = 0
-    for (const f of (bdlisaGeo?.features ?? [])) {
-      if (bdlisaCount >= MAX_PER_CAT) break
-      const code = norm(f.properties.code)
-      const nom = norm(f.properties.nom)
-      if (code.includes(q) || nom.includes(q)) {
-        items.push({
-          kind: 'bdlisa',
-          badge: 'NAPPE',
-          badgeClass: 'bg-cyan-400/20 text-cyan-300',
-          label: f.properties.nom,
-          detail: `${f.properties.nature ?? ''} · ${f.properties.code}`,
-          action: { kind: 'bdlisa', code: f.properties.code, label: f.properties.nom, geometry: f.geometry },
-        })
-        bdlisaCount++
-      }
-    }
-
     // --- HER ---
     let herCount = 0
     for (const f of (herGeo?.features ?? [])) {
@@ -267,7 +246,7 @@ export function SearchBar({ features, wfsData, onSearchAction }: Props) {
       const bi = CATEGORY_ORDER.indexOf(b.kind as typeof CATEGORY_ORDER[number])
       return ai - bi
     })
-  }, [deferredQuery, features, deptsGeo, regionsGeo, bassinsGeo, herGeo, bdlisaGeo, wfsData])
+  }, [deferredQuery, features, deptsGeo, regionsGeo, bassinsGeo, herGeo, wfsData])
 
   const selectItem = useCallback((item: SearchItem) => {
     onSearchAction(item.action)

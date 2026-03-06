@@ -120,6 +120,8 @@ export default function ObservatoryPage() {
   const { filters, setFilter } = useFilters()
   const [searchParams, setSearchParams] = useSearchParams()
   const { data: geojsonData, isError: geojsonError } = useStationsGeoJSON()
+  // Spatial station codes kept in local state (not URL) to avoid 414 URI Too Large
+  const [spatialStationCodes, setSpatialStationCodes] = useState<string[] | null>(null)
   const filteredFeatures = useMemo<StationGeoJSONFeature[]>(() => {
     const all = geojsonData?.features ?? []
     return all.filter(f => {
@@ -143,9 +145,6 @@ export default function ObservatoryPage() {
       return true
     })
   }, [geojsonData, filters.activeOnly, filters.codeDepartement, filters.classification, filters.codeBdlisa, filters.lastMeasurementAfter, filters.minObservations, spatialStationCodes])
-
-  // Spatial station codes kept in local state (not URL) to avoid 414 URI Too Large
-  const [spatialStationCodes, setSpatialStationCodes] = useState<string[] | null>(null)
 
   const [selectedStation, setSelectedStation] = useState<{ code: string; type: 'piezo' | 'hydro' } | null>(null)
   const [showPiezo, setShowPiezo] = useState(true)
@@ -362,18 +361,6 @@ export default function ObservatoryPage() {
         break
       }
 
-      case 'bdlisa': {
-        setSelectedStation(null)
-        if (action.geometry) {
-          const bbox = computeBboxFromGeometry(action.geometry)
-          setActiveBbox(bbox)
-          setFlyToBbox(bbox)
-          const codes = stationsInGeometry(geojsonData?.features ?? [], action.geometry)
-          setSpatialStationCodes(codes.length > 0 ? codes : null)
-        }
-        break
-      }
-
       case 'wfs':
         if (action.wfsLayerId) {
           activateWfsLayer(action.wfsLayerId)
@@ -385,13 +372,15 @@ export default function ObservatoryPage() {
     }
   }, [setFilter, activateWfsLayer, geojsonData])
 
-  // Compute the BDLISA basin code for the selected piezo station (for map highlighting)
-  const highlightedBasinCode = useMemo(() => {
+  // Get selected piezo station coords for BDLISA polygon fetch
+  const selectedPiezoCoords = useMemo(() => {
     if (!selectedStation || selectedStation.type !== 'piezo') return null
     const feat = (geojsonData?.features ?? []).find(f => f.properties.code === selectedStation.code)
-    const bdlisa = feat?.properties?.codes_bdlisa
+    if (!feat?.geometry?.coordinates) return null
+    const bdlisa = feat.properties?.codes_bdlisa
     if (!bdlisa) return null
-    return bdlisa.split(',')[0].trim()
+    const [lon, lat] = feat.geometry.coordinates
+    return { lat, lon, code: bdlisa.split(',')[0].trim() }
   }, [selectedStation, geojsonData])
 
   const stationCounts = useMemo(() => {
@@ -430,7 +419,8 @@ export default function ObservatoryPage() {
         onBboxChange={handleBboxChange}
         activeWfsLayers={activeWfsLayers}
         wfsData={wfsData}
-        highlightedBasinCode={highlightedBasinCode}
+        highlightedBasinCode={selectedPiezoCoords?.code ?? null}
+        selectedPiezoCoords={selectedPiezoCoords}
         selectedStationCode={selectedStation?.code ?? null}
         flyToBbox={flyToBbox}
         onFlyToComplete={() => setFlyToBbox(null)}
