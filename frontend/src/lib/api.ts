@@ -24,16 +24,22 @@ async function fetchJson<T>(path: string, params?: Record<string, string | strin
       }
     })
   }
-  const res = await fetch(url.toString())
-  if (!res.ok) {
-    let detail = ''
-    try {
-      const body = await res.json()
-      detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)
-    } catch {}
-    throw new Error(`API ${res.status}${detail ? `: ${detail}` : ''}`)
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 30_000)
+  try {
+    const res = await fetch(url.toString(), { signal: controller.signal })
+    if (!res.ok) {
+      let detail = ''
+      try {
+        const body = await res.json()
+        detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)
+      } catch {}
+      throw new Error(`API ${res.status}${detail ? `: ${detail}` : ''}`)
+    }
+    return await res.json()
+  } finally {
+    clearTimeout(timeoutId)
   }
-  return res.json()
 }
 
 export const api = {

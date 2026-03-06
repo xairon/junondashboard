@@ -241,11 +241,12 @@ export default function ObservatoryPage() {
   }, [wfsDataAll, activeBbox])
 
   const handleStationClick = useCallback((code: string, type: 'piezo' | 'hydro') => {
-    setSelectedStation({ code, type })
+    setSelectedStation(prev => prev?.code === code && prev?.type === type ? null : { code, type })
   }, [])
 
   const handleEmptyClick = useCallback(() => {
     setSelectedStation(null)
+    setActiveBbox(null)
   }, [])
 
   const handleDeptClick = useCallback((code: string | null) => {

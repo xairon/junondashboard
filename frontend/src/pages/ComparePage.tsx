@@ -67,14 +67,12 @@ export default function ComparePage() {
     })
   }, [searchParams, piezoStations, hydroStations])
 
-  // Auto-enable normalization for mixed types
+  const isMixed = selected.some(s => s.type === 'piezo') && selected.some(s => s.type === 'hydro')
+
+  // Force normalization when switching to mixed types
   useEffect(() => {
-    const hasPiezo = selected.some(s => s.type === 'piezo')
-    const hasHydro = selected.some(s => s.type === 'hydro')
-    if (hasPiezo && hasHydro && !normalized) {
-      setNormalized(true)
-    }
-  }, [selected]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (isMixed && !normalized) setNormalized(true)
+  }, [isMixed]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Update URL when selection changes
   const updateUrl = useCallback((newSelected: SelectedStation[]) => {
@@ -238,8 +236,10 @@ export default function ComparePage() {
           <div className="flex gap-2">
             <button
               onClick={() => setNormalized(false)}
+              disabled={isMixed}
               aria-label="Afficher valeurs brutes"
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium ${!normalized ? 'bg-accent-cyan/20 text-accent-cyan' : 'text-text-secondary'}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium ${!normalized ? 'bg-accent-cyan/20 text-accent-cyan' : 'text-text-secondary'} ${isMixed ? 'opacity-40 cursor-not-allowed' : ''}`}
+              title={isMixed ? 'Normalisation requise pour comparer piézo et hydro' : undefined}
             >
               Valeurs brutes
             </button>

@@ -209,8 +209,11 @@ export default function StationPage() {
 
   if (!station) {
     return (
-      <div className="flex items-center justify-center h-full text-text-secondary" role="alert">
-        Station non trouvée
+      <div className="flex flex-col items-center justify-center h-full gap-4">
+        <p className="text-text-secondary">Station non trouvée</p>
+        <Link to="/" className="text-accent-cyan hover:underline text-sm">
+          Retour à l'observatoire
+        </Link>
       </div>
     )
   }
