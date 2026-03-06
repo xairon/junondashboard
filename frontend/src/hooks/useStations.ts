@@ -37,6 +37,7 @@ export function useStationsGeoJSON() {
     queryKey: ['stations', 'geojson'],
     queryFn: () => api.common.geojson(),
     staleTime: 3_600_000, // 1h — matches backend Redis TTL
+    gcTime: 3_600_000,
   })
 }
 
@@ -62,7 +63,7 @@ export function useHydroSiblings(code: string) {
 
 export function useBdlisaLookup() {
   const { data } = useQuery({
-    queryKey: ['bdlisa-geojson'],
+    queryKey: ['search-geo', '/geo/bdlisa.geojson'],
     queryFn: (): Promise<{ features: Array<{ properties: { code: string; nom: string; nature: string } }> }> =>
       fetch('/geo/bdlisa.geojson').then(r => r.json()),
     staleTime: Infinity,

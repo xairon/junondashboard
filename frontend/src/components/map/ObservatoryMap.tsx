@@ -776,7 +776,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
           'case',
           ['>=', ['index-of', highlightedBasinCode, ['get', 'codes_bdlisa']], 0],
           0.95,
-          0.12,
+          0.2,
         ])
       }
       // Dim piezo clusters
@@ -796,6 +796,12 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
       if (map.getLayer('hydro-cluster-count')) {
         map.setPaintProperty('hydro-cluster-count', 'text-opacity', 0.1)
       }
+
+      // Fade admin layers so BDLISA + dimmed stations stay visible & clickable
+      const adminFills = ['regions-fill', 'depts-fill', 'her-fill', 'bassins-fill']
+      const adminLines = ['regions-line', 'depts-line', 'her-line', 'bassins-line']
+      adminFills.forEach(id => { if (map.getLayer(id)) map.setPaintProperty(id, 'fill-opacity', 0.03) })
+      adminLines.forEach(id => { if (map.getLayer(id)) map.setPaintProperty(id, 'line-opacity', 0.1) })
 
       // Show BDLISA polygon for this basin
       const showBdlisa = (data: any) => {
@@ -852,6 +858,15 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
       if (map.getLayer('hydro-cluster-count')) {
         map.setPaintProperty('hydro-cluster-count', 'text-opacity', 1)
       }
+      // Restore admin layer opacities
+      if (map.getLayer('regions-fill')) map.setPaintProperty('regions-fill', 'fill-opacity', ['case', ['boolean', ['feature-state', 'hover'], false], 0.35, 0.15])
+      if (map.getLayer('regions-line')) map.setPaintProperty('regions-line', 'line-opacity', 0.7)
+      if (map.getLayer('depts-fill')) map.setPaintProperty('depts-fill', 'fill-opacity', ['case', ['==', ['get', 'code'], activeCodeDeptRef.current ?? '$$NONE$$'], 0.30, ['boolean', ['feature-state', 'hover'], false], 0.25, 0.12])
+      if (map.getLayer('depts-line')) map.setPaintProperty('depts-line', 'line-opacity', 0.6)
+      if (map.getLayer('her-fill')) map.setPaintProperty('her-fill', 'fill-opacity', ['case', ['boolean', ['feature-state', 'hover'], false], 0.30, 0.15])
+      if (map.getLayer('her-line')) map.setPaintProperty('her-line', 'line-opacity', 1)
+      if (map.getLayer('bassins-fill')) map.setPaintProperty('bassins-fill', 'fill-opacity', ['case', ['==', ['get', 'CdBH'], activeCodeBassinRef.current ?? '$$NONE$$'], 0.35, ['boolean', ['feature-state', 'hover'], false], 0.20, 0.10])
+      if (map.getLayer('bassins-line')) map.setPaintProperty('bassins-line', 'line-opacity', 0.5)
       // Hide BDLISA polygon
       if (map.getLayer('bdlisa-highlight-fill')) map.setLayoutProperty('bdlisa-highlight-fill', 'visibility', 'none')
       if (map.getLayer('bdlisa-highlight-line')) map.setLayoutProperty('bdlisa-highlight-line', 'visibility', 'none')

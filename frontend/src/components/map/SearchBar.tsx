@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback, useDeferredValue } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Search, X } from 'lucide-react'
 import type { StationGeoJSONFeature, WfsLayerId } from '../../lib/types'
@@ -107,10 +107,13 @@ export function SearchBar({ features, wfsData, onSearchAction }: Props) {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  // Defer heavy search computation to avoid blocking input
+  const deferredQuery = useDeferredValue(query)
+
   // Build search results
   const results = useMemo<SearchItem[]>(() => {
-    if (!query || query.length < 2) return []
-    const q = norm(query)
+    if (!deferredQuery || deferredQuery.length < 2) return []
+    const q = norm(deferredQuery)
     const items: SearchItem[] = []
     const MAX_PER_CAT = 3
     const MAX_STATIONS = 5
@@ -264,7 +267,7 @@ export function SearchBar({ features, wfsData, onSearchAction }: Props) {
       const bi = CATEGORY_ORDER.indexOf(b.kind as typeof CATEGORY_ORDER[number])
       return ai - bi
     })
-  }, [query, features, deptsGeo, regionsGeo, bassinsGeo, herGeo, bdlisaGeo, wfsData])
+  }, [deferredQuery, features, deptsGeo, regionsGeo, bassinsGeo, herGeo, bdlisaGeo, wfsData])
 
   const selectItem = useCallback((item: SearchItem) => {
     onSearchAction(item.action)

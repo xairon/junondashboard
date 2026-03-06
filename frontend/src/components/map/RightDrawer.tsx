@@ -268,10 +268,11 @@ export function RightDrawer(props: Props) {
               {group.layers.map(layer => (
                 <label key={layer.id} className="flex items-center gap-2 py-1 cursor-pointer group">
                   <input
-                    type="checkbox"
+                    type={group.mode === 'radio' ? 'radio' : 'checkbox'}
+                    name={group.mode === 'radio' ? `layer-group-${group.id}` : undefined}
                     checked={props.activeWfsLayers.has(layer.id)}
                     onChange={() => props.onToggleWfsLayer(layer.id, group.id)}
-                    className={`w-3.5 h-3.5 accent-accent-cyan ${group.mode === 'radio' ? 'rounded-full' : ''}`}
+                    className="w-3.5 h-3.5 accent-accent-cyan"
                   />
                   <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: layer.color }} />
                   <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors">{layer.label}</span>
