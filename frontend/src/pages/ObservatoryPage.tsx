@@ -117,7 +117,7 @@ function stationsInGeometry(features: StationGeoJSONFeature[], geometry: any): s
 /* ------------------------------------------------------------------ */
 
 export default function ObservatoryPage() {
-  const { filters, setFilter, setFilters } = useFilters()
+  const { filters, setFilter } = useFilters()
   const [searchParams, setSearchParams] = useSearchParams()
   const { data: geojsonData, isError: geojsonError } = useStationsGeoJSON()
   const filteredFeatures = useMemo<StationGeoJSONFeature[]>(() => {
@@ -137,12 +137,15 @@ export default function ObservatoryPage() {
         if (f.properties.derniere_mesure < filters.lastMeasurementAfter) return false
       }
       if (filters.minObservations && (f.properties.nb_observations ?? 0) < filters.minObservations) return false
-      if (filters.stationCodes?.length) {
-        if (!filters.stationCodes.includes(f.properties.code)) return false
+      if (spatialStationCodes?.length) {
+        if (!spatialStationCodes.includes(f.properties.code)) return false
       }
       return true
     })
-  }, [geojsonData, filters.activeOnly, filters.codeDepartement, filters.classification, filters.codeBdlisa, filters.lastMeasurementAfter, filters.minObservations, filters.stationCodes])
+  }, [geojsonData, filters.activeOnly, filters.codeDepartement, filters.classification, filters.codeBdlisa, filters.lastMeasurementAfter, filters.minObservations, spatialStationCodes])
+
+  // Spatial station codes kept in local state (not URL) to avoid 414 URI Too Large
+  const [spatialStationCodes, setSpatialStationCodes] = useState<string[] | null>(null)
 
   const [selectedStation, setSelectedStation] = useState<{ code: string; type: 'piezo' | 'hydro' } | null>(null)
   const [showPiezo, setShowPiezo] = useState(true)
@@ -246,26 +249,29 @@ export default function ObservatoryPage() {
 
   const handleEmptyClick = useCallback(() => {
     setSelectedStation(null)
+    setSpatialStationCodes(null)
     setActiveBbox(null)
   }, [])
 
   const handleDeptClick = useCallback((code: string | null) => {
     setSelectedStation(null)
-    setFilters({ dept: code ?? undefined, stations: undefined })
+    setSpatialStationCodes(null)
+    setFilter('dept', code ?? undefined)
     if (!code) setActiveBbox(null)
-  }, [setFilters])
+  }, [setFilter])
 
   const handleBassinClick = useCallback((code: string | null) => {
     setSelectedStation(null)
-    setFilters({ bassin: code ?? undefined, stations: undefined })
+    setSpatialStationCodes(null)
+    setFilter('bassin', code ?? undefined)
     if (!code) setActiveBbox(null)
-  }, [setFilters])
+  }, [setFilter])
 
   const handleSpatialFilter = useCallback((codes: string[] | null) => {
     setSelectedStation(null)
-    setFilter('stations', codes ?? undefined)
+    setSpatialStationCodes(codes)
     if (!codes) setActiveBbox(null)
-  }, [setFilter])
+  }, [])
 
   const handleBboxChange = useCallback((bbox: Bbox | null) => {
     setActiveBbox(bbox)
@@ -306,8 +312,9 @@ export default function ObservatoryPage() {
 
       case 'department':
         setSelectedStation(null)
+        setSpatialStationCodes(null)
         setShowRegions(false); setShowDepts(true); setShowHER(false); setShowSandre(false)
-        setFilters({ dept: action.code, bassin: undefined, stations: undefined })
+        setFilter('dept', action.code)
         if (action.geometry) {
           const bbox = computeBboxFromGeometry(action.geometry)
           setActiveBbox(bbox)
@@ -323,7 +330,7 @@ export default function ObservatoryPage() {
           setActiveBbox(bbox)
           setFlyToBbox(bbox)
           const codes = stationsInGeometry(geojsonData?.features ?? [], action.geometry)
-          setFilters({ dept: undefined, bassin: undefined, stations: codes.length > 0 ? codes : undefined })
+          setSpatialStationCodes(codes.length > 0 ? codes : null)
         }
         break
       }
@@ -336,7 +343,8 @@ export default function ObservatoryPage() {
           setActiveBbox(bbox)
           setFlyToBbox(bbox)
           const codes = stationsInGeometry(geojsonData?.features ?? [], action.geometry)
-          setFilters({ bassin: action.code, dept: undefined, stations: codes.length > 0 ? codes : undefined })
+          setSpatialStationCodes(codes.length > 0 ? codes : null)
+          setFilter('bassin', action.code)
         }
         break
       }
@@ -349,7 +357,7 @@ export default function ObservatoryPage() {
           setActiveBbox(bbox)
           setFlyToBbox(bbox)
           const codes = stationsInGeometry(geojsonData?.features ?? [], action.geometry)
-          setFilters({ dept: undefined, bassin: undefined, stations: codes.length > 0 ? codes : undefined })
+          setSpatialStationCodes(codes.length > 0 ? codes : null)
         }
         break
       }
@@ -361,7 +369,7 @@ export default function ObservatoryPage() {
           setActiveBbox(bbox)
           setFlyToBbox(bbox)
           const codes = stationsInGeometry(geojsonData?.features ?? [], action.geometry)
-          setFilters({ dept: undefined, bassin: undefined, stations: codes.length > 0 ? codes : undefined })
+          setSpatialStationCodes(codes.length > 0 ? codes : null)
         }
         break
       }
@@ -375,7 +383,7 @@ export default function ObservatoryPage() {
         }
         break
     }
-  }, [setFilters, activateWfsLayer, geojsonData])
+  }, [setFilter, activateWfsLayer, geojsonData])
 
   // Compute the BDLISA basin code for the selected piezo station (for map highlighting)
   const highlightedBasinCode = useMemo(() => {
@@ -453,6 +461,7 @@ export default function ObservatoryPage() {
         setShowSandreDistricts={setShowSandre}
         activeWfsLayers={activeWfsLayers}
         onToggleWfsLayer={handleToggleWfsLayer}
+        onResetSpatial={() => { setSpatialStationCodes(null); setActiveBbox(null) }}
       />
 
       {selectedStation && (

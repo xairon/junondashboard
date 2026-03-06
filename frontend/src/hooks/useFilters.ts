@@ -29,7 +29,6 @@ export interface Filters {
   codeBassin?: string    // SANDRE district code (e.g. "06")
   codeRegion?: string
   codeHer?: number       // HER-1 code
-  stationCodes?: string[] // For spatial filtering (regions, HER)
 }
 
 export function useFilters() {
@@ -63,7 +62,6 @@ const filters = useMemo<Filters>(() => ({
     codeBassin: searchParams.get('bassin') ?? undefined,
     codeRegion: searchParams.get('region') ?? undefined,
     codeHer: searchParams.get('her') ? Number(searchParams.get('her')) : undefined,
-    stationCodes: searchParams.getAll('stations').length > 0 ? searchParams.getAll('stations') : undefined,
   }), [searchParams])
 
   const setFilter = useCallback((key: string, value: string | string[] | undefined) => {

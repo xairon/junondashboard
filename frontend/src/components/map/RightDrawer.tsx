@@ -24,6 +24,7 @@ interface Props {
   setShowSandreDistricts: (v: boolean) => void
   activeWfsLayers: Set<WfsLayerId>
   onToggleWfsLayer: (layerId: WfsLayerId, group: string) => void
+  onResetSpatial?: () => void
 }
 
 function AccordionSection({ id, title, badge, defaultOpen, children }: {
@@ -78,7 +79,7 @@ export function RightDrawer(props: Props) {
     props.setFilter('dept', undefined)
     props.setFilter('bdlisa', undefined)
     props.setFilter('bassin', undefined)
-    props.setFilter('stations', undefined)
+    props.onResetSpatial?.()
   }
 
   return (
