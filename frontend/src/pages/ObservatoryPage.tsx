@@ -1,4 +1,5 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { ObservatoryMap } from '../components/map/ObservatoryMap'
 import { StationDrawer } from '../components/map/StationDrawer'
 import { KPIBar } from '../components/map/KPIBar'
@@ -117,6 +118,7 @@ function stationsInGeometry(features: StationGeoJSONFeature[], geometry: any): s
 
 export default function ObservatoryPage() {
   const { filters, setFilter, setFilters } = useFilters()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { data: geojsonData, isError: geojsonError } = useStationsGeoJSON()
   const filteredFeatures = useMemo<StationGeoJSONFeature[]>(() => {
     const all = geojsonData?.features ?? []
@@ -154,6 +156,22 @@ export default function ObservatoryPage() {
   const [activeWfsLayers, setActiveWfsLayers] = useState<Set<WfsLayerId>>(new Set())
   const [activeBbox, setActiveBbox] = useState<Bbox | null>(null)
   const [flyToBbox, setFlyToBbox] = useState<Bbox | null>(null)
+
+  // Fly to lat/lon from URL (e.g. AlertsPage "Voir sur la carte" link)
+  useEffect(() => {
+    const lat = parseFloat(searchParams.get('lat') ?? '')
+    const lon = parseFloat(searchParams.get('lon') ?? '')
+    const zoom = parseFloat(searchParams.get('zoom') ?? '')
+    if (!isNaN(lat) && !isNaN(lon)) {
+      const delta = zoom > 10 ? 0.05 : 0.15
+      setFlyToBbox([lon - delta, lat - delta, lon + delta, lat + delta])
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev)
+        next.delete('lat'); next.delete('lon'); next.delete('zoom')
+        return next
+      }, { replace: true })
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Timeline state
   const [timelinePeriodIndex, setTimelinePeriodIndex] = useState<number | null>(null)
@@ -231,16 +249,19 @@ export default function ObservatoryPage() {
   }, [])
 
   const handleDeptClick = useCallback((code: string | null) => {
+    setSelectedStation(null)
     setFilters({ dept: code ?? undefined, stations: undefined })
     if (!code) setActiveBbox(null)
   }, [setFilters])
 
   const handleBassinClick = useCallback((code: string | null) => {
+    setSelectedStation(null)
     setFilters({ bassin: code ?? undefined, stations: undefined })
     if (!code) setActiveBbox(null)
   }, [setFilters])
 
   const handleSpatialFilter = useCallback((codes: string[] | null) => {
+    setSelectedStation(null)
     setFilter('stations', codes ?? undefined)
     if (!codes) setActiveBbox(null)
   }, [setFilter])
@@ -274,6 +295,8 @@ export default function ObservatoryPage() {
   const handleSearchAction = useCallback((action: SearchAction) => {
     switch (action.kind) {
       case 'station':
+        if (action.stationType === 'piezo') setShowPiezo(true)
+        if (action.stationType === 'hydro') setShowHydro(true)
         setSelectedStation({ code: action.code, type: action.stationType! })
         if (action.geometry) {
           setFlyToBbox(computeBboxFromGeometry(action.geometry))
@@ -281,7 +304,7 @@ export default function ObservatoryPage() {
         break
 
       case 'department':
-        // Switch to dept layer only
+        setSelectedStation(null)
         setShowRegions(false); setShowDepts(true); setShowHER(false); setShowSandre(false)
         setFilters({ dept: action.code, bassin: undefined, stations: undefined })
         if (action.geometry) {
@@ -292,7 +315,7 @@ export default function ObservatoryPage() {
         break
 
       case 'region': {
-        // Switch to region layer only
+        setSelectedStation(null)
         setShowRegions(true); setShowDepts(false); setShowHER(false); setShowSandre(false)
         if (action.geometry) {
           const bbox = computeBboxFromGeometry(action.geometry)
@@ -305,7 +328,7 @@ export default function ObservatoryPage() {
       }
 
       case 'bassin': {
-        // Switch to bassin layer only
+        setSelectedStation(null)
         setShowRegions(false); setShowDepts(false); setShowHER(false); setShowSandre(true)
         if (action.geometry) {
           const bbox = computeBboxFromGeometry(action.geometry)
@@ -318,7 +341,7 @@ export default function ObservatoryPage() {
       }
 
       case 'her': {
-        // Switch to HER layer only
+        setSelectedStation(null)
         setShowRegions(false); setShowDepts(false); setShowHER(true); setShowSandre(false)
         if (action.geometry) {
           const bbox = computeBboxFromGeometry(action.geometry)
@@ -331,7 +354,7 @@ export default function ObservatoryPage() {
       }
 
       case 'bdlisa': {
-        // Keep current layers, just zoom + filter
+        setSelectedStation(null)
         if (action.geometry) {
           const bbox = computeBboxFromGeometry(action.geometry)
           setActiveBbox(bbox)

@@ -78,6 +78,7 @@ export function RightDrawer(props: Props) {
     props.setFilter('dept', undefined)
     props.setFilter('bdlisa', undefined)
     props.setFilter('bassin', undefined)
+    props.setFilter('stations', undefined)
   }
 
   return (

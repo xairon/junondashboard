@@ -66,7 +66,7 @@ export function StationDrawer({ code, type, onClose }: Props) {
   const isPiezo = type === 'piezo'
   const piezoQuery = usePiezoStationDetail(isPiezo ? code : '')
   const hydroQuery = useHydroStationDetail(!isPiezo ? code : '')
-  const { data: station, isLoading } = isPiezo ? piezoQuery : hydroQuery
+  const { data: station, isLoading, isError } = isPiezo ? piezoQuery : hydroQuery
   const bdlisaLookup = useBdlisaLookup()
 
   const stationCode = isPiezo
@@ -76,6 +76,18 @@ export function StationDrawer({ code, type, onClose }: Props) {
   const hydroSiblings = useHydroSiblings(!isPiezo ? stationCode : '')
 
   const content = (() => {
+    if (isError) {
+      return (
+        <div className="p-4">
+          <div className="flex items-start justify-between mb-4">
+            <p className="text-sm text-red-400">Impossible de charger cette station.</p>
+            <button onClick={onClose} aria-label="Fermer" className="p-1 hover:bg-bg-hover rounded">
+              <X className="w-4 h-4 text-text-secondary" />
+            </button>
+          </div>
+        </div>
+      )
+    }
     if (isLoading || !station) return <DrawerSkeleton onClose={onClose} />
 
     const s = station as any

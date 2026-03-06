@@ -53,6 +53,7 @@ export default function AlertsPage() {
       setSortKey(key)
       setSortDir('asc')
     }
+    setPage(0)
   }, [sortKey])
 
   // Group alerts by classification
