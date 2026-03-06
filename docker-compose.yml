@@ -66,6 +66,14 @@ services:
           memory: 256M
           # cpus: "0.5"
 
+  e2e:
+    build: ./e2e
+    profiles: ["test"]
+    volumes:
+      - ./e2e/report:/e2e/report
+    environment:
+      - BASE_URL=http://nginx:80
+
 networks:
   brgm:
     external: true
