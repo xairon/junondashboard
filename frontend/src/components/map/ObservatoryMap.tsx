@@ -494,6 +494,9 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
           })
           map.on('mouseleave', 'regions-fill', () => { if (hovId !== null) map.setFeatureState({ source: 'regions', id: hovId }, { hover: false }); hovId = null; setTooltip(null) })
           map.on('click', 'regions-fill', (e) => {
+            // Ignore if a station was clicked on top
+            const stationHits = map.queryRenderedFeatures(e.point, { layers: ['piezo-clusters', 'piezo-unclustered', 'hydro-clusters', 'hydro-unclustered'].filter(id => !!map.getLayer(id)) })
+            if (stationHits.length > 0) return
             const feat = e.features?.[0]; if (!feat) return
             const bbox = computeBbox(feat.geometry)
             map.fitBounds(bbox as maplibregl.LngLatBoundsLike, { padding: 60, duration: 500 })
@@ -532,6 +535,8 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
           })
           map.on('mouseleave', 'depts-fill', () => { if (hovId !== null) map.setFeatureState({ source: 'departments', id: hovId }, { hover: false }); hovId = null; setTooltip(null) })
           map.on('click', 'depts-fill', (e) => {
+            const stationHits = map.queryRenderedFeatures(e.point, { layers: ['piezo-clusters', 'piezo-unclustered', 'hydro-clusters', 'hydro-unclustered'].filter(id => !!map.getLayer(id)) })
+            if (stationHits.length > 0) return
             const feat = e.features?.[0]; if (!feat) return
             const bbox = computeBbox(feat.geometry)
             map.fitBounds(bbox as maplibregl.LngLatBoundsLike, { padding: 60, duration: 500 })
@@ -563,6 +568,8 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
           })
           map.on('mouseleave', 'her-fill', () => { if (hovId !== null) map.setFeatureState({ source: 'her', id: hovId }, { hover: false }); hovId = null; setTooltip(null) })
           map.on('click', 'her-fill', (e) => {
+            const stationHits = map.queryRenderedFeatures(e.point, { layers: ['piezo-clusters', 'piezo-unclustered', 'hydro-clusters', 'hydro-unclustered'].filter(id => !!map.getLayer(id)) })
+            if (stationHits.length > 0) return
             const feat = e.features?.[0]; if (!feat) return
             const bbox = computeBbox(feat.geometry)
             map.fitBounds(bbox as maplibregl.LngLatBoundsLike, { padding: 60, duration: 500 })
@@ -594,6 +601,8 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
           })
           map.on('mouseleave', 'bassins-fill', () => { if (hovId !== null) map.setFeatureState({ source: 'bassins', id: hovId }, { hover: false }); hovId = null; setTooltip(null) })
           map.on('click', 'bassins-fill', (e) => {
+            const stationHits = map.queryRenderedFeatures(e.point, { layers: ['piezo-clusters', 'piezo-unclustered', 'hydro-clusters', 'hydro-unclustered'].filter(id => !!map.getLayer(id)) })
+            if (stationHits.length > 0) return
             const feat = e.features?.[0]; if (!feat) return
             const code = feat.properties?.CdBH ?? null; const current = activeCodeBassinRef.current
             const bbox = computeBbox(feat.geometry)
@@ -828,6 +837,9 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
           if (map.getLayer('bdlisa-highlight-fill')) map.setLayoutProperty('bdlisa-highlight-fill', 'visibility', 'visible')
           if (map.getLayer('bdlisa-highlight-line')) map.setLayoutProperty('bdlisa-highlight-line', 'visibility', 'visible')
         }
+        // Zoom to polygon bbox to uncluster stations within
+        const bbox = computeBbox(polygon)
+        map.fitBounds(bbox as maplibregl.LngLatBoundsLike, { padding: 80, duration: 600 })
       }
       if (selectedPiezoCoords) {
         fetch(`/api/v1/bdlisa/polygon?lat=${selectedPiezoCoords.lat}&lon=${selectedPiezoCoords.lon}`)
