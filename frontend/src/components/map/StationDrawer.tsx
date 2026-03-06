@@ -412,17 +412,17 @@ export function StationDrawer({ code, type, onClose }: Props) {
 
   return (
     <>
-      {/* Mobile backdrop */}
+      {/* Mobile backdrop — z-40 to cover RightDrawer (z-30) */}
       <div
-        className="md:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-30"
+        className="md:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-40"
         onClick={onClose}
       />
 
-      {/* Drawer */}
+      {/* Drawer — z-40 to sit above RightDrawer (z-30) on mobile */}
       <div
         role="dialog"
         aria-label={`Station ${code}`}
-        className="absolute top-0 left-0 h-full z-30 w-full sm:w-80 bg-bg-card border-r border-white/10 shadow-2xl transition-transform duration-200 ease-out overflow-y-auto translate-x-0"
+        className="absolute top-0 left-0 h-full z-40 w-full sm:w-80 bg-bg-card border-r border-white/10 shadow-2xl transition-transform duration-200 ease-out overflow-y-auto translate-x-0"
       >
         {content}
       </div>
