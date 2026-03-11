@@ -38,7 +38,7 @@ curl http://localhost/api/v1/health      # health check
 
 ### Backend (`backend/app/`)
 - **Entry:** `main.py` — FastAPI app with lifespan (Redis + SQLAlchemy init/teardown), CORS, routers. Warms WFS + classification caches at startup
-- **Routers:** `routers/{piezo,hydro,common,era5,wfs}.py` — one per domain, prefix `/api/v1/<domain>`
+- **Routers:** `routers/{piezo,hydro,common,era5,wfs,bdlisa}.py` — one per domain, prefix `/api/v1/<domain>`
 - **Models:** `models/` — Pydantic response schemas
 - **DB:** `database.py` — async SQLAlchemy engine + `get_db()` dependency. All queries use `text()` with `:param` placeholders (never string formatting). Schema: `gold.*`
 - **Cache:** `cache.py` — Redis cache-aside with two helpers:
@@ -50,11 +50,12 @@ curl http://localhost/api/v1/health      # health check
   - `compute_ssfi()` — SSFI (gamma distribution) for streamflow
   - `compute_spi()` — SPI (gamma distribution) for precipitation
   - `classify_latest_spli()` / `classify_latest_ssfi()` — optimized single-value classifiers for batch computation
-- **Classification:** `classification.py` — batch computation of current classifications for all stations:
+- **Classification:** `classification.py` — batch computation of current classifications and reliability for all stations:
   - Computes SPLI (piezo) and SSFI (hydro) for each station's latest month
+  - Computes reliability level per station: `fiable` (≥10 years with ≥6 months data), `indicatif` (5-9 years), `insuffisant` (<5 years)
   - Cached in Redis 24h, warmed at startup via background task
-  - `get_classification_lookup()` → `{"piezo": {code: class}, "hydro": {code: class}}` or `None`
-  - All endpoints (GeoJSON, alerts, stats, station detail/list) overlay computed classification on DB data
+  - `get_classification_lookup()` → `{"piezo": {code: class}, "hydro": {code: class}, "reliability": {code: level}}` or `None`
+  - All endpoints (GeoJSON, alerts, stats, station detail/list) overlay computed classification and reliability on DB data
   - Graceful fallback to DB percentile-based classification if Redis unavailable
 - **Serialization:** `json_response.py` — `FastJSONResponse` wraps orjson (handles datetime, Decimal, UUID natively)
 - **Config:** `config.py` — pydantic-settings, reads `.env` at project root
@@ -68,9 +69,9 @@ curl http://localhost/api/v1/health      # health check
 - **Hooks:** `hooks/use*.ts` — TanStack Query hooks (staleTime: 5min default)
 - **State:** filter state lives in URL search params via `useFilters()` (uses `useSearchParams`), persisted to `sessionStorage` across page navigations. No global state library
 - **Import alias:** `@/` maps to `src/`
-- **Map:** `components/map/ObservatoryMap.tsx` — imperative MapLibre GL via `useRef`. Voyager basemap + terrain hillshading. Static GeoJSON from `public/geo/` (regions, departments, bassins, HER, BDLISA). WFS layers from `/api/v1/wfs/` (SANDRE zonage, Carthage waterways, DCE water masses)
+- **Map:** `components/map/ObservatoryMap.tsx` — imperative MapLibre GL via `useRef`. Voyager basemap + terrain hillshading. Static GeoJSON from `public/geo/` (regions, departments, bassins, HER). WFS layers from `/api/v1/wfs/` (SANDRE zonage, Carthage waterways, DCE water masses). BDLISA served from `backend/data/bdlisa/` via `/api/v1/bdlisa/`
 - **Layer config:** `lib/layerConfig.ts` — WFS layer definitions (groups: SANDRE zonage, Carthage, hydro-écologie), colors, min zoom, tooltips
-- **RightDrawer:** `components/map/RightDrawer.tsx` — unified control panel (data toggles, filters, layer management with radio/checkbox groups)
+- **RightDrawer:** `components/map/RightDrawer.tsx` — unified control panel: data toggles, filters (classification, reliability, activity, spatial), layer management with unified `ZONE_LAYERS` array (radio groups for exclusive zone selection)
 - **StationDrawer:** `components/map/StationDrawer.tsx` — left drawer on marker click. Shows situation actuelle, tendance, historique, climat ERA5, contexte hydrogéologique. Hidden for inactive stations (>90 days without data)
 - **Drought charts:** `components/charts/DroughtIndexChart.tsx` — bar chart with 7-class Météo-France zone bands and color legend. Supports SPLI, SSFI, SPI indices
 - **Theme:** dark theme with CSS variables in `index.css` under `@theme {}`. Status colors: `status-extremement-bas` (dark red), `status-tres-bas` (red), `status-bas` (orange), `status-normal` (green), `status-haut` (blue), `status-tres-haut` (dark blue), `status-extremement-haut` (dark indigo)
@@ -116,7 +117,7 @@ Station lists/GeoJSON: 1h. Alerts: 1h. Daily timeseries: 6h. Monthly/trends: 12h
 - **Hub'Eau** — BRGM API for piezometric and hydrometric data (imported into PostgreSQL `gold` schema)
 - **SANDRE** — WFS services for hydrographic reference data (zones, waterways, water masses). Base URL: `services.sandre.eaufrance.fr/geo/zonage`
 - **ERA5** — ECMWF climate reanalysis (temperature, precipitation, evaporation). Pre-aggregated in `int_era5_*` tables
-- **BDLISA** — Groundwater body database. Static GeoJSON in `public/geo/bdlisa.geojson`
+- **BDLISA** — Groundwater body database. Per-entity JSON files served from `backend/data/bdlisa/` via `FileResponse`
 - **Admin boundaries** — Régions, départements from official data. Static GeoJSON in `public/geo/`
 - **AWS Terrain Tiles** — Raster DEM tiles (terrarium encoding) for hillshading overlay. Streamed from `s3.amazonaws.com/elevation-tiles-prod/terrarium/`
 
@@ -125,7 +126,7 @@ The classification system uses standardized drought indices computed on-the-fly 
 - **Piézo stations:** SPLI (IPS) — BRGM kernel density estimator methodology per calendar month
 - **Hydro stations:** SSFI — gamma distribution fit per calendar month
 - At startup, `classification.py` batch-computes the latest month's index for all stations (~18k piezo, ~5k hydro)
-- Results cached in Redis (`hydro:classifications:current`, 24h TTL)
-- All API endpoints overlay the computed classification on the DB `classification_derniere_annee` column
+- Results cached in Redis (`hydro:classifications:current`, 24h TTL), includes reliability levels
+- All API endpoints overlay the computed classification and reliability on the DB `classification_derniere_annee` column
 - If Redis is cold or unavailable, endpoints fall back to DB percentile-based classification (5-class)
 - The 7-class thresholds follow BRGM RP-64147-FR / Météo-France (BSH, ADES, DREAL standard)
