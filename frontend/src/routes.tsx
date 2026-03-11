@@ -6,6 +6,7 @@ const ObservatoryPage = lazy(() => import('./pages/ObservatoryPage'))
 const StationPage = lazy(() => import('./pages/StationPage'))
 const AlertsPage = lazy(() => import('./pages/AlertsPage'))
 const ComparePage = lazy(() => import('./pages/ComparePage'))
+const AboutPage = lazy(() => import('./pages/AboutPage'))
 
 function SuspenseWrapper({ children }: { children: React.ReactNode }) {
   return (
@@ -37,6 +38,7 @@ export const router = createBrowserRouter([
       { path: 'station/*', element: <SuspenseWrapper><StationPage /></SuspenseWrapper> },
       { path: 'alerts', element: <SuspenseWrapper><AlertsPage /></SuspenseWrapper> },
       { path: 'compare', element: <SuspenseWrapper><ComparePage /></SuspenseWrapper> },
+      { path: 'about', element: <SuspenseWrapper><AboutPage /></SuspenseWrapper> },
       { path: '*', element: <SuspenseWrapper><NotFoundPage /></SuspenseWrapper> },
     ],
   },

@@ -172,9 +172,19 @@ export default function StationPage() {
   })
 
   // Select active data based on resolution
+  // For yearly: null out precipitation when coverage is too low (< 300 days)
+  // to avoid misleading totals from sparse measurements
   const activeData = useMemo(() => {
     if (resolution === 'daily') return isPiezo ? piezoDaily : hydroDaily
-    if (resolution === 'yearly') return isPiezo ? piezoYearly : hydroYearly
+    if (resolution === 'yearly') {
+      const raw = isPiezo ? piezoYearly : hydroYearly
+      return raw?.map((d: any) => ({
+        ...d,
+        precipitation_totale_annuelle: (d.nb_jours_mesures_annuel ?? 0) >= 300
+          ? d.precipitation_totale_annuelle
+          : null,
+      }))
+    }
     return monthly
   }, [resolution, isPiezo, piezoDaily, hydroDaily, piezoYearly, hydroYearly, monthly])
 

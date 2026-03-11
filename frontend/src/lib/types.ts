@@ -223,6 +223,7 @@ export interface StationGeoJSONProperties {
   code_district?: string | null   // hydro only — first char of code_cours_eau
   derniere_mesure: string | null
   nb_observations: number | null  // nb_mesures_total (piezo) or nb_jours_total (hydro)
+  fiabilite?: 'fiable' | 'indicatif' | 'insuffisant'
 }
 
 export interface StationGeoJSONFeature {

@@ -22,14 +22,18 @@ SeverityType = Literal["EXTREMEMENT_BAS", "TRES_BAS", "BAS", "HAUT", "TRES_HAUT"
 
 
 def _overlay_classification(features: list[dict], lookup: dict | None) -> None:
-    """Replace DB classification with computed classification in-place."""
+    """Replace DB classification with computed classification in-place,
+    and add reliability level from the same lookup."""
     if not lookup:
         return
+    reliability = lookup.get("reliability", {})
     for f in features:
         p = f["properties"]
         computed = lookup.get(p["type"], {}).get(p["code"])
         if computed and computed != "UNKNOWN":
             p["classification"] = computed
+        if reliability:
+            p["fiabilite"] = reliability.get(p["code"], "insuffisant")
 
 
 @router.get("/stations/geojson")

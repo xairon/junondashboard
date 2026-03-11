@@ -1,9 +1,27 @@
 import { useState } from 'react'
 import { Layers, X, RotateCcw, ChevronDown, ChevronRight } from 'lucide-react'
-import { LAYER_GROUPS } from '@/lib/layerConfig'
 import { CLASSIFICATION_ORDER, CLASSIFICATION_LABELS, CLASSIFICATION_COLORS } from '@/lib/constants'
 import type { Filters } from '@/hooks/useFilters'
-import type { WfsLayerId } from '@/lib/types'
+
+/** All exclusive zone layers (only one active at a time) */
+const ZONE_LAYERS: { id: string; label: string; group: string; color?: string }[] = [
+  { id: 'regions',            label: 'Régions',                     group: 'Administratif' },
+  { id: 'depts',              label: 'Départements',                group: 'Administratif' },
+  { id: 'bassins',            label: 'Bassins (SANDRE)',            group: 'Administratif' },
+  { id: 'her',                label: 'Hydroécorégions (HER-2)',     group: 'Administratif', color: '#34d399' },
+  { id: 'region-hydro',       label: 'Régions hydrographiques',     group: 'Zonage SANDRE', color: '#3b82f6' },
+  { id: 'secteur-hydro',      label: 'Secteurs hydrographiques',    group: 'Zonage SANDRE', color: '#06b6d4' },
+  { id: 'sous-secteur-hydro', label: 'Sous-secteurs hydro.',        group: 'Zonage SANDRE', color: '#14b8a6' },
+  { id: 'zone-hydro',         label: 'Zones hydrographiques',       group: 'Zonage SANDRE', color: '#10b981' },
+]
+
+/** Overlay layers (can be combined freely) */
+const OVERLAY_LAYERS: { id: string; label: string; group: string; color: string }[] = [
+  { id: 'cours-eau-1',  label: 'Cours d\'eau principaux (>100km)', group: 'Réseau hydrographique', color: '#60a5fa' },
+  { id: 'cours-eau-2',  label: 'Cours d\'eau secondaires',         group: 'Réseau hydrographique', color: '#93c5fd' },
+  { id: 'plan-eau',     label: 'Plans d\'eau',                     group: 'Réseau hydrographique', color: '#38bdf8' },
+  { id: 'masse-eau-riv',label: 'Masses d\'eau DCE',                group: 'Hydro-écologie',        color: '#c084fc' },
+]
 
 interface Props {
   showPiezo: boolean
@@ -12,19 +30,16 @@ interface Props {
   setShowHydro: (v: boolean) => void
   filters: Filters
   setFilter: (key: string, value: string | string[] | undefined) => void
-  filteredCount?: number
-  totalCount?: number
-  showRegions: boolean
-  setShowRegions: (v: boolean) => void
-  showDepts: boolean
-  setShowDepts: (v: boolean) => void
-  showHER: boolean
-  setShowHER: (v: boolean) => void
-  showSandreDistricts: boolean
-  setShowSandreDistricts: (v: boolean) => void
-  activeWfsLayers: Set<WfsLayerId>
-  onToggleWfsLayer: (layerId: WfsLayerId, group: string) => void
+  filteredPiezo?: number
+  totalPiezo?: number
+  filteredHydro?: number
+  totalHydro?: number
+  activeZoneLayer: string | null
+  onZoneLayerChange: (id: string | null) => void
+  overlayLayers: Set<string>
+  onOverlayToggle: (id: string) => void
   onResetSpatial?: () => void
+  hasSpatialFilter?: boolean
 }
 
 function AccordionSection({ id, title, badge, defaultOpen, children }: {
@@ -64,11 +79,15 @@ export function RightDrawer(props: Props) {
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   const hasActiveFilter = (
-    props.filters.activeOnly != null ||
+    props.filters.activeOnly === false ||
     props.filters.minObservations != null ||
     props.filters.lastMeasurementAfter != null ||
     (props.filters.classification != null && props.filters.classification.length > 0) ||
-    props.filters.codeDepartement != null
+    props.filters.codeDepartement != null ||
+    props.filters.showFiable === false ||
+    props.filters.showIndicatif === true ||
+    props.filters.showInsuffisant === true ||
+    props.hasSpatialFilter
   )
 
   const resetFilters = () => {
@@ -79,8 +98,27 @@ export function RightDrawer(props: Props) {
     props.setFilter('dept', undefined)
     props.setFilter('bdlisa', undefined)
     props.setFilter('bassin', undefined)
+    props.setFilter('fiable', undefined)
+    props.setFilter('indicatif', undefined)
+    props.setFilter('insuffisant', undefined)
     props.onResetSpatial?.()
   }
+
+  // Group zone layers by group label
+  const zoneGroups = ZONE_LAYERS.reduce<{ label: string; layers: typeof ZONE_LAYERS[number][] }[]>((acc, l) => {
+    let group = acc.find(g => g.label === l.group)
+    if (!group) { group = { label: l.group, layers: [] }; acc.push(group) }
+    group.layers.push(l)
+    return acc
+  }, [])
+
+  // Group overlay layers by group label
+  const overlayGroups = OVERLAY_LAYERS.reduce<{ label: string; layers: typeof OVERLAY_LAYERS[number][] }[]>((acc, l) => {
+    let group = acc.find(g => g.label === l.group)
+    if (!group) { group = { label: l.group, layers: [] }; acc.push(group) }
+    group.layers.push(l)
+    return acc
+  }, [])
 
   return (
     <>
@@ -151,16 +189,67 @@ export function RightDrawer(props: Props) {
         <AccordionSection
           id="filtres"
           title="Filtres"
-          badge={props.filteredCount != null && props.totalCount != null
-            ? `${props.filteredCount}/${props.totalCount}`
-            : undefined}
+          badge={(() => {
+            const parts: string[] = []
+            if (props.showPiezo && props.filteredPiezo != null && props.totalPiezo != null) {
+              parts.push(props.filteredPiezo !== props.totalPiezo
+                ? `${props.filteredPiezo.toLocaleString('fr-FR')}/${props.totalPiezo.toLocaleString('fr-FR')} piézo`
+                : `${props.totalPiezo.toLocaleString('fr-FR')} piézo`)
+            }
+            if (props.showHydro && props.filteredHydro != null && props.totalHydro != null) {
+              parts.push(props.filteredHydro !== props.totalHydro
+                ? `${props.filteredHydro.toLocaleString('fr-FR')}/${props.totalHydro.toLocaleString('fr-FR')} hydro`
+                : `${props.totalHydro.toLocaleString('fr-FR')} hydro`)
+            }
+            return parts.length > 0 ? parts.join(' · ') : undefined
+          })()}
         >
           <div className="space-y-3">
+            {/* Qualité des données */}
+            <div>
+              <label className="text-xs text-text-secondary block mb-2">Qualité des données</label>
+              <div className="space-y-1">
+                <label className="flex items-center gap-2 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={props.filters.showFiable ?? true}
+                    onChange={(e) => props.setFilter('fiable', e.target.checked ? undefined : 'false')}
+                    className="w-3.5 h-3.5 accent-accent-cyan rounded"
+                  />
+                  <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors">
+                    Fiables <span className="text-text-secondary/60">(&ge; 10 ans)</span>
+                  </span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={props.filters.showIndicatif ?? false}
+                    onChange={(e) => props.setFilter('indicatif', e.target.checked ? 'true' : undefined)}
+                    className="w-3.5 h-3.5 accent-yellow-500 rounded"
+                  />
+                  <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors">
+                    Indicatives <span className="text-text-secondary/60">(5-9 ans)</span>
+                  </span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={props.filters.showInsuffisant ?? false}
+                    onChange={(e) => props.setFilter('insuffisant', e.target.checked ? 'true' : undefined)}
+                    className="w-3.5 h-3.5 accent-red-500 rounded"
+                  />
+                  <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors">
+                    Insuffisantes <span className="text-text-secondary/60">(&lt; 5 ans)</span>
+                  </span>
+                </label>
+              </div>
+            </div>
+
             <label className="flex items-center gap-2 cursor-pointer group">
               <input
                 type="checkbox"
-                checked={props.filters.activeOnly ?? false}
-                onChange={(e) => props.setFilter('active_only', e.target.checked ? 'true' : undefined)}
+                checked={props.filters.activeOnly ?? true}
+                onChange={(e) => props.setFilter('active_only', e.target.checked ? undefined : 'false')}
                 className="w-3.5 h-3.5 accent-accent-cyan rounded"
               />
               <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors">
@@ -231,6 +320,19 @@ export function RightDrawer(props: Props) {
               />
             </div>
 
+            {props.hasSpatialFilter && (
+              <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-accent-cyan/10 border border-accent-cyan/20 text-accent-cyan text-xs">
+                <span>Filtre spatial actif (zone sélectionnée)</span>
+                <button
+                  onClick={() => props.onResetSpatial?.()}
+                  className="ml-auto hover:text-white transition-colors"
+                  aria-label="Supprimer le filtre spatial"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+
             {hasActiveFilter && (
               <button
                 onClick={resetFilters}
@@ -245,35 +347,39 @@ export function RightDrawer(props: Props) {
 
         {/* Calques */}
         <AccordionSection id="calques" title="Calques">
-          {/* Admin layers */}
-          <div className="mb-3">
-            <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider block mb-1">Administratif</span>
-            {([
-              { label: 'Régions', state: props.showRegions, setState: props.setShowRegions },
-              { label: 'Départements', state: props.showDepts, setState: props.setShowDepts },
-              { label: 'Bassins (SANDRE)', state: props.showSandreDistricts, setState: props.setShowSandreDistricts },
-            ] as const).map(({ label, state, setState }) => (
-              <label key={label} className="flex items-center gap-2 py-1 cursor-pointer group">
-                <input type="checkbox" checked={state} onChange={e => setState(e.target.checked)} className="w-3.5 h-3.5 accent-accent-cyan rounded" />
-                <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors">{label}</span>
-              </label>
-            ))}
-          </div>
+          {/* Zone layers — exclusive, one at a time */}
+          {zoneGroups.map(group => (
+            <div key={group.label} className="mb-3">
+              <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider block mb-1">{group.label}</span>
+              {group.layers.map(layer => {
+                const active = props.activeZoneLayer === layer.id
+                return (
+                  <label key={layer.id} className="flex items-center gap-2 py-1 cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={active}
+                      onChange={() => props.onZoneLayerChange(active ? null : layer.id)}
+                      className="w-3.5 h-3.5 accent-accent-cyan rounded"
+                    />
+                    {layer.color && <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: layer.color }} />}
+                    <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors">{layer.label}</span>
+                  </label>
+                )
+              })}
+            </div>
+          ))}
 
-          {/* WFS dynamic layer groups */}
-          {LAYER_GROUPS.map(group => (
-            <div key={group.id} className="mb-3">
-              <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider block mb-1">
-                {group.icon} {group.label}
-              </span>
+          {/* Overlay layers — independent, can combine */}
+          {overlayGroups.map(group => (
+            <div key={group.label} className="mb-3">
+              <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider block mb-1">{group.label}</span>
               {group.layers.map(layer => (
                 <label key={layer.id} className="flex items-center gap-2 py-1 cursor-pointer group">
                   <input
-                    type={group.mode === 'radio' ? 'radio' : 'checkbox'}
-                    name={group.mode === 'radio' ? `layer-group-${group.id}` : undefined}
-                    checked={props.activeWfsLayers.has(layer.id)}
-                    onChange={() => props.onToggleWfsLayer(layer.id, group.id)}
-                    className="w-3.5 h-3.5 accent-accent-cyan"
+                    type="checkbox"
+                    checked={props.overlayLayers.has(layer.id)}
+                    onChange={() => props.onOverlayToggle(layer.id)}
+                    className="w-3.5 h-3.5 accent-accent-cyan rounded"
                   />
                   <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: layer.color }} />
                   <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors">{layer.label}</span>
@@ -281,13 +387,6 @@ export function RightDrawer(props: Props) {
               ))}
             </div>
           ))}
-
-          {/* HER-2 standalone */}
-          <label className="flex items-center gap-2 py-1 cursor-pointer group">
-            <input type="checkbox" checked={props.showHER} onChange={e => props.setShowHER(e.target.checked)} className="w-3.5 h-3.5 accent-accent-cyan rounded" />
-            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-emerald-400" />
-            <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors">Hydroécorégions (HER-2)</span>
-          </label>
         </AccordionSection>
       </div>
     </>

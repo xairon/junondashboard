@@ -9,7 +9,6 @@ import { TimelineSlider } from '../components/map/TimelineSlider'
 import { RightDrawer } from '../components/map/RightDrawer'
 import { useStationsGeoJSON } from '../hooks/useStations'
 import { useWfsLayer } from '../hooks/useWfsLayer'
-import { LAYER_GROUPS } from '../lib/layerConfig'
 import type { StationGeoJSONFeature, WfsLayerId, ClassificationTimeline } from '../lib/types'
 import { TIMELINE_CLASSIFICATIONS } from '../lib/types'
 import { useFilters } from '../hooks/useFilters'
@@ -122,9 +121,15 @@ export default function ObservatoryPage() {
   const { data: geojsonData, isError: geojsonError } = useStationsGeoJSON()
   // Spatial station codes kept in local state (not URL) to avoid 414 URI Too Large
   const [spatialStationCodes, setSpatialStationCodes] = useState<string[] | null>(null)
+  const [selectedStation, setSelectedStation] = useState<{ code: string; type: 'piezo' | 'hydro' } | null>(null)
+  const [showPiezo, setShowPiezo] = useState(true)
+  const [showHydro, setShowHydro] = useState(true)
   const filteredFeatures = useMemo<StationGeoJSONFeature[]>(() => {
     const all = geojsonData?.features ?? []
     return all.filter(f => {
+      // Type visibility
+      if (f.properties.type === 'piezo' && !showPiezo) return false
+      if (f.properties.type === 'hydro' && !showHydro) return false
       if (filters.activeOnly) {
         const currentYear = new Date().getFullYear().toString()
         if (!f.properties.derniere_mesure || !f.properties.derniere_mesure.startsWith(currentYear)) return false
@@ -139,25 +144,45 @@ export default function ObservatoryPage() {
         if (f.properties.derniere_mesure < filters.lastMeasurementAfter) return false
       }
       if (filters.minObservations && (f.properties.nb_observations ?? 0) < filters.minObservations) return false
+      // Reliability filter (default: fiable only) — skip if fiabilite not yet computed
+      const fiab = f.properties.fiabilite
+      if (fiab) {
+        if (fiab === 'fiable' && !filters.showFiable) return false
+        if (fiab === 'indicatif' && !filters.showIndicatif) return false
+        if (fiab === 'insuffisant' && !filters.showInsuffisant) return false
+      }
       if (spatialStationCodes?.length) {
         if (!spatialStationCodes.includes(f.properties.code)) return false
       }
       return true
     })
-  }, [geojsonData, filters.activeOnly, filters.codeDepartement, filters.classification, filters.codeBdlisa, filters.lastMeasurementAfter, filters.minObservations, spatialStationCodes])
+  }, [geojsonData, showPiezo, showHydro, filters.activeOnly, filters.codeDepartement, filters.classification, filters.codeBdlisa, filters.lastMeasurementAfter, filters.minObservations, filters.showFiable, filters.showIndicatif, filters.showInsuffisant, spatialStationCodes])
 
-  const [selectedStation, setSelectedStation] = useState<{ code: string; type: 'piezo' | 'hydro' } | null>(null)
-  const [showPiezo, setShowPiezo] = useState(true)
-  const [showHydro, setShowHydro] = useState(true)
-
-  const [showRegions, setShowRegions] = useState(true)
-  const [showDepts, setShowDepts] = useState(false)
-  const [showHER, setShowHER] = useState(false)
-  const [showSandre, setShowSandre] = useState(false)
-
-  const [activeWfsLayers, setActiveWfsLayers] = useState<Set<WfsLayerId>>(new Set())
+  // Single active zone layer (exclusive) — admin or WFS zonage
+  const [activeZoneLayer, setActiveZoneLayer] = useState<string | null>('regions')
+  // Overlay layers (independent, combinable) — carthage + hydroeco
+  const [overlayLayers, setOverlayLayers] = useState<Set<string>>(new Set())
   const [activeBbox, setActiveBbox] = useState<Bbox | null>(null)
   const [flyToBbox, setFlyToBbox] = useState<Bbox | null>(null)
+
+  // Derive legacy props for ObservatoryMap from activeZoneLayer
+  const showRegions = activeZoneLayer === 'regions'
+  const showDepts = activeZoneLayer === 'depts'
+  const showSandre = activeZoneLayer === 'bassins'
+  const showHER = activeZoneLayer === 'her'
+
+  // Derive activeWfsLayers for ObservatoryMap from zone + overlay
+  const activeWfsLayers = useMemo(() => {
+    const s = new Set<WfsLayerId>()
+    // Zone WFS layers
+    const wfsZones: WfsLayerId[] = ['region-hydro', 'secteur-hydro', 'sous-secteur-hydro', 'zone-hydro']
+    if (activeZoneLayer && wfsZones.includes(activeZoneLayer as WfsLayerId)) {
+      s.add(activeZoneLayer as WfsLayerId)
+    }
+    // Overlay layers
+    overlayLayers.forEach(id => s.add(id as WfsLayerId))
+    return s
+  }, [activeZoneLayer, overlayLayers])
 
   // Fly to lat/lon from URL (e.g. AlertsPage "Voir sur la carte" link)
   useEffect(() => {
@@ -179,30 +204,12 @@ export default function ObservatoryPage() {
   const [timelinePeriodIndex, setTimelinePeriodIndex] = useState<number | null>(null)
   const [timelineData, setTimelineData] = useState<ClassificationTimeline | null>(null)
 
-  const handleToggleWfsLayer = useCallback((layerId: WfsLayerId, groupId: string) => {
-    setActiveWfsLayers(prev => {
+  /** Toggle an overlay layer (independent, combinable) */
+  const handleOverlayToggle = useCallback((id: string) => {
+    setOverlayLayers(prev => {
       const next = new Set(prev)
-      const group = LAYER_GROUPS.find(g => g.id === groupId)
-      if (group?.mode === 'radio') {
-        group.layers.forEach(l => next.delete(l.id))
-        if (!prev.has(layerId)) next.add(layerId)
-      } else {
-        if (next.has(layerId)) next.delete(layerId)
-        else next.add(layerId)
-      }
-      return next
-    })
-  }, [])
-
-  /** Activate a WFS layer (always add, never toggle off) */
-  const activateWfsLayer = useCallback((layerId: WfsLayerId) => {
-    setActiveWfsLayers(prev => {
-      const next = new Set(prev)
-      const group = LAYER_GROUPS.find(g => g.layers.some(l => l.id === layerId))
-      if (group?.mode === 'radio') {
-        group.layers.forEach(l => next.delete(l.id))
-      }
-      next.add(layerId)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
       return next
     })
   }, [])
@@ -244,6 +251,9 @@ export default function ObservatoryPage() {
 
   const handleStationClick = useCallback((code: string, type: 'piezo' | 'hydro') => {
     setSelectedStation(prev => prev?.code === code && prev?.type === type ? null : { code, type })
+    // Clear spatial filters from previous region/bassin clicks so counters stay meaningful
+    setSpatialStationCodes(null)
+    setActiveBbox(null)
   }, [])
 
   const handleEmptyClick = useCallback(() => {
@@ -283,19 +293,50 @@ export default function ObservatoryPage() {
   }, [])
 
   // Features with timeline classification override
+  // When timeline is active: start from ALL features (not just filtered),
+  // keep only stations that had data at that period (!= UNKNOWN),
+  // apply non-reliability filters on top (dept, classification, spatial, etc.)
   const displayFeatures = useMemo<StationGeoJSONFeature[]>(() => {
     if (timelinePeriodIndex == null || !timelineData) return filteredFeatures
-    return filteredFeatures.map(f => {
-      const arr = timelineData.stations[f.properties.code]
-      if (!arr) return f
-      const cls = TIMELINE_CLASSIFICATIONS[arr[timelinePeriodIndex]] ?? null
-      if (cls === f.properties.classification) return f
-      return {
-        ...f,
-        properties: { ...f.properties, classification: cls === 'UNKNOWN' ? null : cls },
-      }
-    })
-  }, [filteredFeatures, timelinePeriodIndex, timelineData])
+
+    const all = geojsonData?.features ?? []
+    return all
+      .filter(f => {
+        // Must have timeline data at this period
+        const arr = timelineData.stations[f.properties.code]
+        if (!arr) return false
+        const clsIdx = arr[timelinePeriodIndex]
+        if (clsIdx === 7 || clsIdx == null) return false // 7 = UNKNOWN = no data
+
+        // Type visibility
+        if (f.properties.type === 'piezo' && !showPiezo) return false
+        if (f.properties.type === 'hydro' && !showHydro) return false
+
+        // Apply non-reliability filters (dept, spatial, classification from timeline)
+        if (filters.codeDepartement && f.properties.code_departement !== filters.codeDepartement) return false
+        if (filters.codeBdlisa && f.properties.type === 'piezo') {
+          const codes = f.properties.codes_bdlisa ?? ''
+          if (!codes.startsWith(filters.codeBdlisa)) return false
+        }
+        if (spatialStationCodes?.length) {
+          if (!spatialStationCodes.includes(f.properties.code)) return false
+        }
+        // Classification filter applies to timeline classification, not current
+        if (filters.classification?.length) {
+          const cls = TIMELINE_CLASSIFICATIONS[clsIdx]
+          if (!filters.classification.includes(cls)) return false
+        }
+        return true
+      })
+      .map(f => {
+        const cls = TIMELINE_CLASSIFICATIONS[timelineData.stations[f.properties.code][timelinePeriodIndex]]
+        return {
+          ...f,
+          properties: { ...f.properties, classification: cls === 'UNKNOWN' ? null : cls },
+        }
+      })
+  }, [filteredFeatures, timelinePeriodIndex, timelineData, geojsonData, showPiezo, showHydro,
+      filters.codeDepartement, filters.codeBdlisa, filters.classification, spatialStationCodes])
 
   // Universal search action handler
   const handleSearchAction = useCallback((action: SearchAction) => {
@@ -312,7 +353,7 @@ export default function ObservatoryPage() {
       case 'department':
         setSelectedStation(null)
         setSpatialStationCodes(null)
-        setShowRegions(false); setShowDepts(true); setShowHER(false); setShowSandre(false)
+        setActiveZoneLayer('depts')
         setFilter('dept', action.code)
         if (action.geometry) {
           const bbox = computeBboxFromGeometry(action.geometry)
@@ -323,7 +364,7 @@ export default function ObservatoryPage() {
 
       case 'region': {
         setSelectedStation(null)
-        setShowRegions(true); setShowDepts(false); setShowHER(false); setShowSandre(false)
+        setActiveZoneLayer('regions')
         if (action.geometry) {
           const bbox = computeBboxFromGeometry(action.geometry)
           setActiveBbox(bbox)
@@ -336,7 +377,7 @@ export default function ObservatoryPage() {
 
       case 'bassin': {
         setSelectedStation(null)
-        setShowRegions(false); setShowDepts(false); setShowHER(false); setShowSandre(true)
+        setActiveZoneLayer('bassins')
         if (action.geometry) {
           const bbox = computeBboxFromGeometry(action.geometry)
           setActiveBbox(bbox)
@@ -350,7 +391,7 @@ export default function ObservatoryPage() {
 
       case 'her': {
         setSelectedStation(null)
-        setShowRegions(false); setShowDepts(false); setShowHER(true); setShowSandre(false)
+        setActiveZoneLayer('her')
         if (action.geometry) {
           const bbox = computeBboxFromGeometry(action.geometry)
           setActiveBbox(bbox)
@@ -363,35 +404,39 @@ export default function ObservatoryPage() {
 
       case 'wfs':
         if (action.wfsLayerId) {
-          activateWfsLayer(action.wfsLayerId)
+          // WFS zone layers go to activeZoneLayer, overlays go to overlayLayers
+          const wfsZones = ['region-hydro', 'secteur-hydro', 'sous-secteur-hydro', 'zone-hydro']
+          if (wfsZones.includes(action.wfsLayerId)) {
+            setActiveZoneLayer(action.wfsLayerId)
+          } else {
+            setOverlayLayers(prev => new Set(prev).add(action.wfsLayerId!))
+          }
         }
         if (action.geometry) {
           setFlyToBbox(computeBboxFromGeometry(action.geometry))
         }
         break
     }
-  }, [setFilter, activateWfsLayer, geojsonData])
+  }, [setFilter, geojsonData])
 
-  // Get selected piezo station coords for BDLISA polygon fetch
-  const selectedPiezoCoords = useMemo(() => {
+  // Get the first BDLISA code for the selected piezo station
+  const highlightedBasinCode = useMemo(() => {
     if (!selectedStation || selectedStation.type !== 'piezo') return null
     const feat = (geojsonData?.features ?? []).find(f => f.properties.code === selectedStation.code)
-    if (!feat?.geometry?.coordinates) return null
-    const bdlisa = feat.properties?.codes_bdlisa
+    const bdlisa = feat?.properties?.codes_bdlisa
     if (!bdlisa) return null
-    const [lon, lat] = feat.geometry.coordinates
-    return { lat, lon, code: bdlisa.split(',')[0].trim() }
+    return bdlisa.split(',')[0].trim()
   }, [selectedStation, geojsonData])
 
   const stationCounts = useMemo(() => {
     const all = geojsonData?.features ?? []
     return {
-      filteredPiezo: filteredFeatures.filter(f => f.properties.type === 'piezo').length,
-      filteredHydro: filteredFeatures.filter(f => f.properties.type === 'hydro').length,
-      totalPiezo: all.filter(f => f.properties.type === 'piezo').length,
-      totalHydro: all.filter(f => f.properties.type === 'hydro').length,
+      filteredPiezo: showPiezo ? filteredFeatures.filter(f => f.properties.type === 'piezo').length : 0,
+      filteredHydro: showHydro ? filteredFeatures.filter(f => f.properties.type === 'hydro').length : 0,
+      totalPiezo: showPiezo ? all.filter(f => f.properties.type === 'piezo').length : 0,
+      totalHydro: showHydro ? all.filter(f => f.properties.type === 'hydro').length : 0,
     }
-  }, [filteredFeatures, geojsonData])
+  }, [filteredFeatures, geojsonData, showPiezo, showHydro])
 
   return (
     <div className="relative h-full">
@@ -403,6 +448,7 @@ export default function ObservatoryPage() {
 
       <ObservatoryMap
         features={displayFeatures}
+        allFeatures={geojsonData?.features}
         showPiezo={showPiezo}
         showHydro={showHydro}
         onStationClick={handleStationClick}
@@ -419,8 +465,7 @@ export default function ObservatoryPage() {
         onBboxChange={handleBboxChange}
         activeWfsLayers={activeWfsLayers}
         wfsData={wfsData}
-        highlightedBasinCode={selectedPiezoCoords?.code ?? null}
-        selectedPiezoCoords={selectedPiezoCoords}
+        highlightedBasinCode={highlightedBasinCode}
         selectedStationCode={selectedStation?.code ?? null}
         flyToBbox={flyToBbox}
         onFlyToComplete={() => setFlyToBbox(null)}
@@ -439,19 +484,16 @@ export default function ObservatoryPage() {
         setShowHydro={setShowHydro}
         filters={filters}
         setFilter={setFilter}
-        filteredCount={filteredFeatures.length}
-        totalCount={geojsonData?.features?.length ?? 0}
-        showRegions={showRegions}
-        setShowRegions={setShowRegions}
-        showDepts={showDepts}
-        setShowDepts={setShowDepts}
-        showHER={showHER}
-        setShowHER={setShowHER}
-        showSandreDistricts={showSandre}
-        setShowSandreDistricts={setShowSandre}
-        activeWfsLayers={activeWfsLayers}
-        onToggleWfsLayer={handleToggleWfsLayer}
+        filteredPiezo={stationCounts.filteredPiezo}
+        totalPiezo={stationCounts.totalPiezo}
+        filteredHydro={stationCounts.filteredHydro}
+        totalHydro={stationCounts.totalHydro}
+        activeZoneLayer={activeZoneLayer}
+        onZoneLayerChange={setActiveZoneLayer}
+        overlayLayers={overlayLayers}
+        onOverlayToggle={handleOverlayToggle}
         onResetSpatial={() => { setSpatialStationCodes(null); setActiveBbox(null) }}
+        hasSpatialFilter={spatialStationCodes != null && spatialStationCodes.length > 0}
       />
 
       {selectedStation && (

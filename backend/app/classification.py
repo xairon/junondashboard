@@ -54,8 +54,28 @@ async def warm_classification_cache() -> None:
         logger.exception("Failed to compute classifications")
 
 
+def _compute_reliability(months: list[str]) -> str:
+    """Compute station data reliability from its monthly date list.
+
+    Counts distinct years with >= 6 months of data:
+      - >= 10 years → 'fiable'
+      - 5-9 years  → 'indicatif'
+      - < 5 years  → 'insuffisant'
+    """
+    year_counts: dict[int, int] = {}
+    for m in months:
+        year = int(m[:4])
+        year_counts[year] = year_counts.get(year, 0) + 1
+    nb_reliable_years = sum(1 for c in year_counts.values() if c >= 6)
+    if nb_reliable_years >= 10:
+        return "fiable"
+    elif nb_reliable_years >= 5:
+        return "indicatif"
+    return "insuffisant"
+
+
 async def _compute_all_classifications() -> dict[str, dict[str, str]]:
-    """Compute SPLI/SSFI classification for every station's latest month."""
+    """Compute SPLI/SSFI classification and reliability for every station."""
     async with async_session() as db:
         piezo_result = await db.execute(text("""
             SELECT code_bss, mois, niveau_moyen
@@ -91,25 +111,33 @@ async def _compute_all_classifications() -> dict[str, dict[str, str]]:
         hydro_stations[code][0].append(str(r["mois"]))
         hydro_stations[code][1].append(float(r["resultat_moyen"]))
 
-    # Run CPU-bound KDE/gamma fitting in thread pool
+    # Run CPU-bound KDE/gamma fitting + reliability in thread pool
     def compute_piezo():
-        out = {}
+        classifications = {}
+        reliability = {}
         for code, (months, values) in piezo_stations.items():
             _, classification = classify_latest_spli(months, values)
-            out[code] = classification
-        return out
+            classifications[code] = classification
+            reliability[code] = _compute_reliability(months)
+        return classifications, reliability
 
     def compute_hydro():
-        out = {}
+        classifications = {}
+        reliability = {}
         for code, (months, values) in hydro_stations.items():
             _, classification = classify_latest_ssfi(months, values)
-            out[code] = classification
-        return out
+            classifications[code] = classification
+            reliability[code] = _compute_reliability(months)
+        return classifications, reliability
 
     loop = asyncio.get_event_loop()
-    piezo_cls, hydro_cls = await asyncio.gather(
+    (piezo_cls, piezo_rel), (hydro_cls, hydro_rel) = await asyncio.gather(
         loop.run_in_executor(None, compute_piezo),
         loop.run_in_executor(None, compute_hydro),
     )
 
-    return {"piezo": piezo_cls, "hydro": hydro_cls}
+    return {
+        "piezo": piezo_cls,
+        "hydro": hydro_cls,
+        "reliability": {**piezo_rel, **hydro_rel},
+    }

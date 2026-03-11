@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(warm_classification_cache())
     yield
     await wfs.close_http_client()
-    await bdlisa.close_bdlisa_client()
+
     if redis_pool is not None:
         await redis_pool.aclose()
     await engine.dispose()

@@ -29,6 +29,9 @@ export interface Filters {
   codeBassin?: string    // SANDRE district code (e.g. "06")
   codeRegion?: string
   codeHer?: number       // HER-1 code
+  showFiable?: boolean       // default true
+  showIndicatif?: boolean    // default false
+  showInsuffisant?: boolean  // default false
 }
 
 export function useFilters() {
@@ -53,7 +56,7 @@ export function useFilters() {
   }, [searchParams])
 
 const filters = useMemo<Filters>(() => ({
-    activeOnly: searchParams.get('active_only') === 'true' ? true : undefined,
+    activeOnly: searchParams.get('active_only') === 'false' ? false : true,
     minObservations: searchParams.get('min_obs') ? Number(searchParams.get('min_obs')) : undefined,
     lastMeasurementAfter: searchParams.get('last_after') ?? undefined,
     classification: searchParams.getAll('classif').length > 0 ? searchParams.getAll('classif') : undefined,
@@ -62,6 +65,9 @@ const filters = useMemo<Filters>(() => ({
     codeBassin: searchParams.get('bassin') ?? undefined,
     codeRegion: searchParams.get('region') ?? undefined,
     codeHer: searchParams.get('her') ? Number(searchParams.get('her')) : undefined,
+    showFiable: searchParams.get('fiable') === 'false' ? false : true,
+    showIndicatif: searchParams.get('indicatif') === 'true' ? true : false,
+    showInsuffisant: searchParams.get('insuffisant') === 'true' ? true : false,
   }), [searchParams])
 
   const setFilter = useCallback((key: string, value: string | string[] | undefined) => {

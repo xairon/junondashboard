@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
-import { Play, Pause, X } from 'lucide-react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { Play, Pause, X, ChevronFirst, ChevronLast } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import type { ClassificationTimeline } from '../../lib/types'
@@ -11,13 +11,31 @@ function formatPeriod(period: string): string {
   return `${MONTH_NAMES[parseInt(month, 10) - 1]} ${year}`
 }
 
-function formatSeason(period: string): string {
+type Season = 'hiver' | 'printemps' | 'ete' | 'automne'
+
+const SEASONS: { id: Season; label: string; months: number[] }[] = [
+  { id: 'hiver',     label: 'Hiver',     months: [12, 1, 2] },
+  { id: 'printemps', label: 'Printemps', months: [3, 4, 5] },
+  { id: 'ete',       label: 'Été',       months: [6, 7, 8] },
+  { id: 'automne',   label: 'Automne',   months: [9, 10, 11] },
+]
+
+function getSeason(period: string): string {
   const month = parseInt(period.split('-')[1], 10)
   if (month <= 2 || month === 12) return 'Hiver'
   if (month <= 5) return 'Printemps'
-  if (month <= 8) return 'Ete'
+  if (month <= 8) return 'Été'
   return 'Automne'
 }
+
+/** Speed presets */
+const SPEEDS = [
+  { label: '×0.5', interval: 3000, step: 1 },
+  { label: '×1',   interval: 1500, step: 1 },
+  { label: '×2',   interval: 750,  step: 1 },
+  { label: '×5',   interval: 300,  step: 1 },
+  { label: '×10',  interval: 150,  step: 1 },
+] as const
 
 interface Props {
   onPeriodChange: (periodIndex: number | null, timeline: ClassificationTimeline | null) => void
@@ -27,75 +45,140 @@ export function TimelineSlider({ onPeriodChange }: Props) {
   const { data: timeline, isLoading } = useQuery({
     queryKey: ['classification-timeline'],
     queryFn: () => api.common.classificationTimeline(),
-    staleTime: 3_600_000 * 24, // 24h
+    staleTime: 3_600_000 * 24,
   })
 
   const [active, setActive] = useState(false)
-  const [index, setIndex] = useState<number>(0)
+  const [sliderPos, setSliderPos] = useState(0) // position in filtered indices
   const [playing, setPlaying] = useState(false)
+  const [speedIdx, setSpeedIdx] = useState(1)
   const playRef = useRef(false)
-  const indexRef = useRef(0)
+  const sliderPosRef = useRef(0)
+  const speedRef = useRef<{ interval: number; step: number }>(SPEEDS[1])
 
-  const maxIndex = (timeline?.periods?.length ?? 1) - 1
+  // Filter state
+  const [startYear, setStartYear] = useState<number | null>(null)
+  const [endYear, setEndYear] = useState<number | null>(null)
+  const [activeSeasons, setActiveSeasons] = useState<Set<Season>>(new Set(['hiver', 'printemps', 'ete', 'automne']))
 
-  // Sync ref for animation
+  // All available years from timeline data
+  const allYears = useMemo(() => {
+    if (!timeline) return []
+    const s = new Set(timeline.periods.map(p => parseInt(p.split('-')[0], 10)))
+    return [...s].sort((a, b) => a - b)
+  }, [timeline])
+
+  // Filtered period indices — maps slider position to original period index
+  const filteredIndices = useMemo(() => {
+    if (!timeline) return []
+    const allowedMonths = new Set<number>()
+    activeSeasons.forEach(s => {
+      const season = SEASONS.find(ss => ss.id === s)
+      season?.months.forEach(m => allowedMonths.add(m))
+    })
+    return timeline.periods
+      .map((p, i) => ({ period: p, origIdx: i }))
+      .filter(({ period }) => {
+        const [yearStr, monthStr] = period.split('-')
+        const year = parseInt(yearStr, 10)
+        const month = parseInt(monthStr, 10)
+        if (startYear != null && year < startYear) return false
+        if (endYear != null && year > endYear) return false
+        if (!allowedMonths.has(month)) return false
+        return true
+      })
+      .map(({ origIdx }) => origIdx)
+  }, [timeline, startYear, endYear, activeSeasons])
+
+  const maxSliderPos = Math.max(0, filteredIndices.length - 1)
+
+  // Sync refs
   useEffect(() => {
     playRef.current = playing
-    indexRef.current = index
-  }, [playing, index])
+    sliderPosRef.current = sliderPos
+    speedRef.current = SPEEDS[speedIdx]
+  }, [playing, sliderPos, speedIdx])
+
+  // Clamp slider when filters change
+  useEffect(() => {
+    if (sliderPos > maxSliderPos) {
+      setSliderPos(maxSliderPos)
+      if (timeline && filteredIndices.length > 0) {
+        onPeriodChange(filteredIndices[maxSliderPos], timeline)
+      }
+    }
+  }, [maxSliderPos]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Animation loop
   useEffect(() => {
-    if (!playing || !timeline) return
-    const interval = setInterval(() => {
+    if (!playing || !timeline || filteredIndices.length === 0) return
+    const tick = () => {
       if (!playRef.current) return
-      const next = indexRef.current + 1
-      if (next > maxIndex) {
+      const s = speedRef.current
+      const next = sliderPosRef.current + s.step
+      if (next > maxSliderPos) {
+        setSliderPos(maxSliderPos)
+        onPeriodChange(filteredIndices[maxSliderPos], timeline)
         setPlaying(false)
         return
       }
-      setIndex(next)
-      onPeriodChange(next, timeline)
-    }, 150)
+      setSliderPos(next)
+      onPeriodChange(filteredIndices[next], timeline)
+    }
+    const interval = setInterval(tick, SPEEDS[speedIdx].interval)
     return () => clearInterval(interval)
-  }, [playing, timeline, maxIndex, onPeriodChange])
+  }, [playing, timeline, maxSliderPos, onPeriodChange, speedIdx, filteredIndices])
 
   const handleActivate = useCallback(() => {
-    if (!timeline || maxIndex < 1) return
+    if (!timeline || filteredIndices.length === 0) return
     setActive(true)
-    const lastIdx = maxIndex
-    setIndex(lastIdx)
-    onPeriodChange(lastIdx, timeline)
-  }, [timeline, maxIndex, onPeriodChange])
+    const last = filteredIndices.length - 1
+    setSliderPos(last)
+    onPeriodChange(filteredIndices[last], timeline)
+  }, [timeline, filteredIndices, onPeriodChange])
 
   const handleDeactivate = useCallback(() => {
     setActive(false)
     setPlaying(false)
-    setIndex(0)
+    setSliderPos(0)
     onPeriodChange(null, null)
   }, [onPeriodChange])
 
   const handleSliderChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseInt(e.target.value, 10)
-    setIndex(val)
-    if (timeline) onPeriodChange(val, timeline)
-  }, [timeline, onPeriodChange])
+    setSliderPos(val)
+    if (timeline && filteredIndices[val] != null) onPeriodChange(filteredIndices[val], timeline)
+  }, [timeline, filteredIndices, onPeriodChange])
 
   const togglePlay = useCallback(() => {
-    if (!timeline) return
-    if (!playing && index >= maxIndex) {
-      // Restart from beginning
-      setIndex(0)
-      onPeriodChange(0, timeline)
+    if (!timeline || filteredIndices.length === 0) return
+    if (!playing && sliderPos >= maxSliderPos) {
+      setSliderPos(0)
+      onPeriodChange(filteredIndices[0], timeline)
     }
     setPlaying(p => !p)
-  }, [playing, index, maxIndex, timeline, onPeriodChange])
+  }, [playing, sliderPos, maxSliderPos, timeline, filteredIndices, onPeriodChange])
+
+  const jumpTo = useCallback((target: number) => {
+    if (!timeline || filteredIndices.length === 0) return
+    const clamped = Math.max(0, Math.min(target, maxSliderPos))
+    setSliderPos(clamped)
+    onPeriodChange(filteredIndices[clamped], timeline)
+  }, [timeline, filteredIndices, maxSliderPos, onPeriodChange])
+
+  const toggleSeason = useCallback((s: Season) => {
+    setActiveSeasons(prev => {
+      const next = new Set(prev)
+      if (next.has(s)) {
+        if (next.size > 1) next.delete(s) // keep at least one
+      } else {
+        next.add(s)
+      }
+      return next
+    })
+  }, [])
 
   if (isLoading || !timeline) return null
-
-  // Year ticks for the slider
-  const years = new Set(timeline.periods.map(p => p.split('-')[0]))
-  const yearList = [...years].sort()
 
   if (!active) {
     return (
@@ -109,31 +192,118 @@ export function TimelineSlider({ onPeriodChange }: Props) {
     )
   }
 
-  const currentPeriod = timeline.periods[index] ?? ''
+  const currentOrigIdx = filteredIndices[sliderPos]
+  const currentPeriod = currentOrigIdx != null ? timeline.periods[currentOrigIdx] ?? '' : ''
+
+  // Year ticks for the slider — from filtered range
+  const filteredPeriods = filteredIndices.map(i => timeline.periods[i])
+  const years = [...new Set(filteredPeriods.map(p => p.split('-')[0]))].sort()
+
+  const effectiveStart = startYear ?? allYears[0] ?? 2000
+  const effectiveEnd = endYear ?? allYears[allYears.length - 1] ?? 2026
 
   return (
     <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-10 w-[calc(100%-2rem)] max-w-4xl bg-bg-card/95 backdrop-blur-md border border-white/10 rounded-lg px-4 py-3 shadow-xl">
-      {/* Header */}
+      {/* Row 1: Filters — date range + seasons */}
+      <div className="flex items-center gap-3 mb-2 flex-wrap">
+        {/* Date range */}
+        <div className="flex items-center gap-1.5 text-[11px]">
+          <span className="text-text-secondary">De</span>
+          <select
+            value={effectiveStart}
+            onChange={e => setStartYear(parseInt(e.target.value, 10))}
+            className="bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-text-primary text-[11px] focus:outline-none focus:border-accent-cyan/50"
+          >
+            {allYears.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <span className="text-text-secondary">à</span>
+          <select
+            value={effectiveEnd}
+            onChange={e => setEndYear(parseInt(e.target.value, 10))}
+            className="bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-text-primary text-[11px] focus:outline-none focus:border-accent-cyan/50"
+          >
+            {allYears.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
+
+        {/* Season filter */}
+        <div className="flex items-center gap-0.5 bg-white/5 rounded-full border border-white/10 px-0.5 py-0.5">
+          {SEASONS.map(s => (
+            <button
+              key={s.id}
+              onClick={() => toggleSeason(s.id)}
+              className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors ${
+                activeSeasons.has(s.id)
+                  ? 'bg-accent-cyan/20 text-accent-cyan'
+                  : 'text-text-secondary/50 hover:text-text-secondary'
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+
+        <span className="text-[10px] text-text-secondary/60 ml-auto">
+          {filteredIndices.length} mois
+        </span>
+      </div>
+
+      {/* Row 2: Controls */}
       <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => jumpTo(0)}
+            className="w-7 h-7 flex items-center justify-center rounded-full text-text-secondary hover:text-text-primary hover:bg-white/10 transition-colors"
+            title="Début"
+          >
+            <ChevronFirst className="w-4 h-4" />
+          </button>
           <button
             onClick={togglePlay}
             className="w-8 h-8 flex items-center justify-center rounded-full bg-accent-cyan/20 text-accent-cyan hover:bg-accent-cyan/30 transition-colors"
           >
             {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
           </button>
-          <div className="text-sm">
-            <span className="text-text-primary font-medium">{formatPeriod(currentPeriod)}</span>
-            <span className="text-text-secondary ml-2">· {formatSeason(currentPeriod)}</span>
-          </div>
+          <button
+            onClick={() => jumpTo(maxSliderPos)}
+            className="w-7 h-7 flex items-center justify-center rounded-full text-text-secondary hover:text-text-primary hover:bg-white/10 transition-colors"
+            title="Fin"
+          >
+            <ChevronLast className="w-4 h-4" />
+          </button>
+
+          {currentPeriod && (
+            <div className="text-sm ml-1">
+              <span className="text-text-primary font-medium">{formatPeriod(currentPeriod)}</span>
+              <span className="text-text-secondary ml-2">· {getSeason(currentPeriod)}</span>
+            </div>
+          )}
         </div>
-        <button
-          onClick={handleDeactivate}
-          className="p-1.5 rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors"
-          title="Fermer la timeline"
-        >
-          <X className="w-4 h-4" />
-        </button>
+
+        <div className="flex items-center gap-2">
+          <div className="flex items-center bg-white/5 rounded-full border border-white/10 px-0.5 py-0.5">
+            {SPEEDS.map((s, i) => (
+              <button
+                key={s.label}
+                onClick={() => setSpeedIdx(i)}
+                className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors ${
+                  i === speedIdx
+                    ? 'bg-accent-cyan/20 text-accent-cyan'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={handleDeactivate}
+            className="p-1.5 rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors"
+            title="Fermer la timeline"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Slider */}
@@ -141,9 +311,10 @@ export function TimelineSlider({ onPeriodChange }: Props) {
         <input
           type="range"
           min={0}
-          max={maxIndex}
-          value={index}
+          max={maxSliderPos}
+          value={sliderPos}
           onChange={handleSliderChange}
+          disabled={filteredIndices.length === 0}
           className="w-full h-1.5 bg-white/10 rounded-full appearance-none cursor-pointer
             [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4
             [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent-cyan
@@ -151,9 +322,8 @@ export function TimelineSlider({ onPeriodChange }: Props) {
             [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full
             [&::-moz-range-thumb]:bg-accent-cyan [&::-moz-range-thumb]:border-0"
         />
-        {/* Year labels */}
         <div className="flex justify-between mt-1 text-[9px] text-text-secondary px-1">
-          {yearList.filter((_, i) => i % Math.max(1, Math.floor(yearList.length / 10)) === 0 || i === yearList.length - 1).map(year => (
+          {years.filter((_, i) => i % Math.max(1, Math.floor(years.length / 10)) === 0 || i === years.length - 1).map(year => (
             <span key={year}>{year}</span>
           ))}
         </div>

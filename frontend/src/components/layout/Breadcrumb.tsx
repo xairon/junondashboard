@@ -32,6 +32,11 @@ function useBreadcrumbs(): BreadcrumbItem[] {
     return items
   }
 
+  if (path === '/about') {
+    items.push({ label: 'À propos' })
+    return items
+  }
+
   if (path.startsWith('/station/')) {
     items.push({ label: 'Station' })
     // Extract the code from the path (after /station/piezo/ or /station/hydro/)

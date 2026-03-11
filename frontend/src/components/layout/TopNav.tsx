@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { Map, AlertTriangle, GitCompareArrows, Menu, X } from 'lucide-react'
+import { Map, AlertTriangle, GitCompareArrows, Info, Menu, X } from 'lucide-react'
 
 const NAV_ITEMS = [
   { to: '/', icon: Map, label: 'Observatoire' },
   { to: '/alerts', icon: AlertTriangle, label: 'Alertes' },
   { to: '/compare', icon: GitCompareArrows, label: 'Comparer' },
+  { to: '/about', icon: Info, label: 'À propos' },
 ] as const
 
 export function TopNav() {
