@@ -49,6 +49,8 @@ La page principale affiche une carte de France avec l'ensemble des stations de m
 
 ![Vue d'ensemble de la carte](assets/01-carte-overview.png)
 
+![Chargement de la carte](assets/01---carte-vue-d-ensemble.gif)
+
 ### Stations
 
 Les stations apparaissent sous forme de marqueurs colorés sur la carte :
@@ -67,6 +69,8 @@ La couleur de chaque marqueur correspond à sa classification actuelle (voir [Sy
 Les marqueurs gris semi-transparents représentent des stations **exclues par les filtres actifs** (fiabilité insuffisante, pas de données récentes, etc.). Ces stations restent visibles pour donner une vue d'ensemble du réseau, mais ne sont pas comptabilisées dans les statistiques. Elles sont cliquables pour consulter leur fiche.
 
 Le toggle « Stations filtrées (grises) » dans le panneau de contrôle permet de les masquer complètement si souhaité.
+
+![Toggle des stations grises](assets/13---toggle-stations-grises.gif)
 
 ### Calques de fond
 
@@ -94,6 +98,8 @@ La carte propose plusieurs niveaux d'information géographique superposables :
 | Plans d'eau | Lacs et retenues (visible à partir du zoom 8) |
 | Masses d'eau DCE | Masses d'eau rivières au sens de la Directive Cadre sur l'Eau (visible à partir du zoom 8) |
 
+![Activation du calque cours d'eau](assets/12---calque-cours-d-eau.gif)
+
 **Relief :** Un ombrage de terrain discret (hillshading) est toujours affiché en arrière-plan pour donner une lecture topographique.
 
 ### Interactions avec la carte
@@ -102,6 +108,8 @@ La carte propose plusieurs niveaux d'information géographique superposables :
 - **Clic sur une zone** (région, département, bassin, HER) → zoom sur la zone et filtre spatial les stations contenues
 - **Clic sur le fond vide** → réinitialise le filtre spatial et ferme la fiche station
 - **Survol d'une zone** → affiche le nom de la zone en tooltip
+
+![Clic sur une région et zoom](assets/05---clic-zone-region.gif)
 
 ### Barre de KPI
 
@@ -120,6 +128,8 @@ Le premier nombre est le nombre de stations filtrées (visibles en couleur), le 
 Le panneau de contrôle s'ouvre en cliquant sur l'icône de calques (en haut à droite de la carte). Il est organisé en sections repliables.
 
 ![Panneau de contrôle](assets/02-panneau-controle.png)
+
+![Ouverture du panneau](assets/02---panneau-de-controle.gif)
 
 ### Section « Données »
 
@@ -157,6 +167,8 @@ Filtrer par code de département INSEE (ex: `75` pour Paris).
 
 ![Filtre par classification](assets/03-filtre-classification.png)
 
+![Sélection d'un filtre de classification](assets/03---filtres-classification.gif)
+
 Filtrer par niveau de classification. Cliquer sur un ou plusieurs niveaux pour ne voir que les stations correspondantes. Les boutons sont colorés selon le code couleur standard :
 
 - Extrêmement bas (rouge foncé)
@@ -187,11 +199,13 @@ Le bouton « Réinitialiser » en bas de la section supprime tous les filtres ac
 
 Permet d'activer/désactiver les calques de fond décrits plus haut. Les calques de zone sont exclusifs (un seul actif à la fois), les calques superposables sont indépendants.
 
+![Activation du calque départements](assets/04---calques-departements.gif)
+
 ---
 
 ## Fiche station (volet gauche)
 
-![Fiche station](assets/06-fiche-station.png)
+![Clic sur une station et ouverture de la fiche](assets/06---fiche-station.gif)
 
 Un clic sur une station ouvre un volet sur la gauche de la carte avec un résumé :
 
@@ -213,7 +227,7 @@ Les stations inactives (pas de données depuis plus de 90 jours) n'affichent pas
 
 La page de détail (`/station/:type/:code`) fournit une analyse complète d'une station individuelle.
 
-![Page détail station](assets/07-detail-station.png)
+![Page détail station](assets/07---page-detail-station.gif)
 
 ### KPI (indicateurs clés)
 
@@ -258,7 +272,7 @@ Graphique montrant la position de la valeur annuelle dans la distribution histor
 
 La timeline est un curseur horizontal en bas de la carte qui permet de rejouer l'historique des classifications mois par mois.
 
-![Timeline historique](assets/11-timeline.png)
+![Lecture de la timeline historique](assets/11---timeline-historique.gif)
 
 ### Utilisation
 
@@ -300,6 +314,8 @@ Quand la timeline est active et le filtre « Données année en cours » coché 
 La page Alertes (`/alerts`) liste les stations actives en situation anormale.
 
 ![Page alertes](assets/08-alertes.png)
+
+![Navigation dans les alertes](assets/08---page-alertes.gif)
 
 ### Critères
 
@@ -361,6 +377,8 @@ Chaque courbe oscille ainsi autour de 0, avec des amplitudes comparables. Un z-s
 ## Recherche universelle
 
 ![Recherche universelle](assets/10-recherche.png)
+
+![Recherche en action](assets/10---recherche-universelle.gif)
 
 La barre de recherche en haut à gauche de la carte permet de trouver rapidement n'importe quel élément :
 
