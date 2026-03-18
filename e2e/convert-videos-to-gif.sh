@@ -46,8 +46,9 @@ convert_one() {
     decode_args="-hwaccel cuda -i"
   fi
 
+  # Speed up 2.5x via setpts, then 10fps output for smooth playback
   ffmpeg -y $decode_args "$video" \
-    -vf "fps=8,scale=720:-1:flags=lanczos,split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=3" \
+    -vf "setpts=0.4*PTS,fps=10,scale=720:-1:flags=lanczos,split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=3" \
     "$gif" 2>/dev/null
 
   if [ -f "$gif" ]; then
