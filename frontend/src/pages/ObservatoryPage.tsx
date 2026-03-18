@@ -124,6 +124,7 @@ export default function ObservatoryPage() {
   const [selectedStation, setSelectedStation] = useState<{ code: string; type: 'piezo' | 'hydro' } | null>(null)
   const [showPiezo, setShowPiezo] = useState(true)
   const [showHydro, setShowHydro] = useState(true)
+  const [showExcluded, setShowExcluded] = useState(true)
   const filteredFeatures = useMemo<StationGeoJSONFeature[]>(() => {
     const all = geojsonData?.features ?? []
     return all.filter(f => {
@@ -144,9 +145,10 @@ export default function ObservatoryPage() {
         if (f.properties.derniere_mesure < filters.lastMeasurementAfter) return false
       }
       if (filters.minObservations && (f.properties.nb_observations ?? 0) < filters.minObservations) return false
-      // Reliability filter (default: fiable only) — skip if fiabilite not yet computed
-      const fiab = f.properties.fiabilite
-      if (fiab) {
+      // Reliability filter — skip when all three are unchecked (= no filter)
+      const anyReliabilityActive = filters.showFiable || filters.showIndicatif || filters.showInsuffisant
+      if (anyReliabilityActive) {
+        const fiab = f.properties.fiabilite ?? 'insuffisant'
         if (fiab === 'fiable' && !filters.showFiable) return false
         if (fiab === 'indicatif' && !filters.showIndicatif) return false
         if (fiab === 'insuffisant' && !filters.showInsuffisant) return false
@@ -157,6 +159,7 @@ export default function ObservatoryPage() {
       return true
     })
   }, [geojsonData, showPiezo, showHydro, filters.activeOnly, filters.codeDepartement, filters.classification, filters.codeBdlisa, filters.lastMeasurementAfter, filters.minObservations, filters.showFiable, filters.showIndicatif, filters.showInsuffisant, spatialStationCodes])
+
 
   // Single active zone layer (exclusive) — admin or WFS zonage
   const [activeZoneLayer, setActiveZoneLayer] = useState<string | null>('regions')
@@ -338,6 +341,66 @@ export default function ObservatoryPage() {
   }, [filteredFeatures, timelinePeriodIndex, timelineData, geojsonData, showPiezo, showHydro,
       filters.codeDepartement, filters.codeBdlisa, filters.classification, spatialStationCodes])
 
+  // Stations excluded by reliability/activeOnly filters — shown as grey unclustered markers
+  // During timeline: grey = station existed (had data before this period) but has no data now
+  const excludedFeatures = useMemo<StationGeoJSONFeature[]>(() => {
+    const activeSet = new Set(displayFeatures.map(f => f.properties.code))
+    const all = geojsonData?.features ?? []
+
+    // --- Timeline mode ---
+    if (timelinePeriodIndex != null && timelineData) {
+      // Grey markers only when activeOnly is checked
+      if (!filters.activeOnly) return []
+
+      return all.filter(f => {
+        if (activeSet.has(f.properties.code)) return false
+        if (f.properties.type === 'piezo' && !showPiezo) return false
+        if (f.properties.type === 'hydro' && !showHydro) return false
+
+        // Station must have had data at some point BEFORE this period (it "existed")
+        const arr = timelineData.stations[f.properties.code]
+        if (!arr) return false
+        let existed = false
+        for (let i = 0; i < timelinePeriodIndex; i++) {
+          if (arr[i] != null && arr[i] !== 7) { existed = true; break }
+        }
+        if (!existed) return false
+
+        // Apply same geo filters as displayFeatures
+        if (filters.codeDepartement && f.properties.code_departement !== filters.codeDepartement) return false
+        if (filters.codeBdlisa && f.properties.type === 'piezo') {
+          const codes = f.properties.codes_bdlisa ?? ''
+          if (!codes.startsWith(filters.codeBdlisa)) return false
+        }
+        if (spatialStationCodes?.length) {
+          if (!spatialStationCodes.includes(f.properties.code)) return false
+        }
+        return true
+      })
+    }
+
+    // --- Normal mode ---
+    return all.filter(f => {
+      if (activeSet.has(f.properties.code)) return false
+      if (f.properties.type === 'piezo' && !showPiezo) return false
+      if (f.properties.type === 'hydro' && !showHydro) return false
+      if (filters.codeDepartement && f.properties.code_departement !== filters.codeDepartement) return false
+      if (filters.classification?.length && !filters.classification.includes(f.properties.classification ?? '')) return false
+      if (filters.codeBdlisa && f.properties.type === 'piezo') {
+        const codes = f.properties.codes_bdlisa ?? ''
+        if (!codes.startsWith(filters.codeBdlisa)) return false
+      }
+      if (filters.lastMeasurementAfter && f.properties.derniere_mesure) {
+        if (f.properties.derniere_mesure < filters.lastMeasurementAfter) return false
+      }
+      if (filters.minObservations && (f.properties.nb_observations ?? 0) < filters.minObservations) return false
+      if (spatialStationCodes?.length) {
+        if (!spatialStationCodes.includes(f.properties.code)) return false
+      }
+      return true
+    })
+  }, [displayFeatures, geojsonData, showPiezo, showHydro, filters.activeOnly, filters.codeDepartement, filters.classification, filters.codeBdlisa, filters.lastMeasurementAfter, filters.minObservations, spatialStationCodes, timelinePeriodIndex, timelineData])
+
   // Universal search action handler
   const handleSearchAction = useCallback((action: SearchAction) => {
     switch (action.kind) {
@@ -428,6 +491,13 @@ export default function ObservatoryPage() {
     return bdlisa.split(',')[0].trim()
   }, [selectedStation, geojsonData])
 
+  // Get the site code for the selected hydro station
+  const highlightedSiteCode = useMemo(() => {
+    if (!selectedStation || selectedStation.type !== 'hydro') return null
+    const feat = (geojsonData?.features ?? []).find(f => f.properties.code === selectedStation.code)
+    return feat?.properties?.code_site ?? null
+  }, [selectedStation, geojsonData])
+
   const stationCounts = useMemo(() => {
     const all = geojsonData?.features ?? []
     return {
@@ -448,6 +518,7 @@ export default function ObservatoryPage() {
 
       <ObservatoryMap
         features={displayFeatures}
+        excludedFeatures={showExcluded ? excludedFeatures : []}
         allFeatures={geojsonData?.features}
         showPiezo={showPiezo}
         showHydro={showHydro}
@@ -466,6 +537,7 @@ export default function ObservatoryPage() {
         activeWfsLayers={activeWfsLayers}
         wfsData={wfsData}
         highlightedBasinCode={highlightedBasinCode}
+        highlightedSiteCode={highlightedSiteCode}
         selectedStationCode={selectedStation?.code ?? null}
         flyToBbox={flyToBbox}
         onFlyToComplete={() => setFlyToBbox(null)}
@@ -482,6 +554,8 @@ export default function ObservatoryPage() {
         setShowPiezo={setShowPiezo}
         showHydro={showHydro}
         setShowHydro={setShowHydro}
+        showExcluded={showExcluded}
+        setShowExcluded={setShowExcluded}
         filters={filters}
         setFilter={setFilter}
         filteredPiezo={stationCounts.filteredPiezo}

@@ -53,6 +53,7 @@ const SANDRE_DISTRICT_COLORS: Record<string, string> = {
 
 interface Props {
   features?: StationGeoJSONFeature[]
+  excludedFeatures?: StationGeoJSONFeature[]
   allFeatures?: StationGeoJSONFeature[]
   showPiezo?: boolean
   showHydro?: boolean
@@ -73,6 +74,7 @@ interface Props {
   activeWfsLayers?: Set<WfsLayerId>
   wfsData?: Record<string, any>
   highlightedBasinCode?: string | null
+  highlightedSiteCode?: string | null
   selectedStationCode?: string | null
   flyToBbox?: [number, number, number, number] | null
   onFlyToComplete?: () => void
@@ -94,6 +96,7 @@ function featuresToGeoJSON(features: StationGeoJSONFeature[]) {
           type: f.properties.type,
           classification: f.properties.classification ?? '',
           codes_bdlisa: f.properties.codes_bdlisa ?? '',
+          code_site: f.properties.code_site ?? '',
         },
       })),
   }
@@ -312,6 +315,7 @@ function computeBbox(geometry: any): [number, number, number, number] {
 /* ------------------------------------------------------------------ */
 export function ObservatoryMap({
   features,
+  excludedFeatures,
   allFeatures,
   showPiezo = true,
   showHydro = true,
@@ -332,6 +336,7 @@ export function ObservatoryMap({
   activeWfsLayers = new Set() as Set<WfsLayerId>,
   wfsData,
   highlightedBasinCode = null,
+  highlightedSiteCode = null,
   selectedStationCode = null,
   flyToBbox = null,
   onFlyToComplete,
@@ -344,6 +349,9 @@ export function ObservatoryMap({
 
   const featuresRef = useRef<StationGeoJSONFeature[]>([])
   featuresRef.current = features ?? []
+
+  const excludedFeaturesRef = useRef<StationGeoJSONFeature[]>([])
+  excludedFeaturesRef.current = excludedFeatures ?? []
 
   const allFeaturesRef = useRef<StationGeoJSONFeature[]>([])
   allFeaturesRef.current = allFeatures ?? features ?? []
@@ -464,12 +472,40 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
       addClusteredSource(map, 'piezo-stations', 'piezo', 'piezo-marker', CLUSTER_STYLE.piezo)
       addClusteredSource(map, 'hydro-stations', 'hydro', 'hydro-marker', CLUSTER_STYLE.hydro)
 
+      // --- Excluded (grey) station sources — above clusters so they're above ref layers & clickable ---
+      const addExcludedSource = (sourceId: string, iconImage: string, layerId: string) => {
+        map.addSource(sourceId, {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] },
+        })
+        map.addLayer({
+          id: layerId,
+          type: 'symbol',
+          source: sourceId,
+          layout: {
+            'icon-image': iconImage,
+            'icon-size': ['interpolate', ['linear'], ['zoom'], 4, 0.3, 8, 0.4, 12, 0.6],
+            'icon-allow-overlap': true,
+          },
+          paint: {
+            'icon-color': '#6b7280',
+            'icon-opacity': 0.35,
+          },
+        })
+      }
+      addExcludedSource('piezo-excluded', 'piezo-marker', 'piezo-excluded-layer')
+      addExcludedSource('hydro-excluded', 'hydro-marker', 'hydro-excluded-layer')
+
       // Populate with any data that already loaded
       if (featuresRef.current.length) {
         const pf = featuresRef.current.filter(f => f.properties.type === 'piezo')
         const hf = featuresRef.current.filter(f => f.properties.type === 'hydro')
         updateSource(map, 'piezo-stations', pf)
         updateSource(map, 'hydro-stations', hf)
+      }
+      if (excludedFeaturesRef.current.length) {
+        updateSource(map, 'piezo-excluded', excludedFeaturesRef.current.filter(f => f.properties.type === 'piezo'))
+        updateSource(map, 'hydro-excluded', excludedFeaturesRef.current.filter(f => f.properties.type === 'hydro'))
       }
 
       // --- Preload all static reference layers in one batch ---
@@ -507,7 +543,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
           map.on('mouseleave', 'regions-fill', () => { if (hovId !== null) map.setFeatureState({ source: 'regions', id: hovId }, { hover: false }); hovId = null; setTooltip(null) })
           map.on('click', 'regions-fill', (e) => {
             // Ignore if a station was clicked on top
-            const stationHits = map.queryRenderedFeatures(e.point, { layers: ['piezo-clusters', 'hydro-clusters', 'piezo-unclustered', 'hydro-unclustered', 'basin-stations-layer'].filter(id => !!map.getLayer(id)) })
+            const stationHits = map.queryRenderedFeatures(e.point, { layers: ['piezo-clusters', 'hydro-clusters', 'piezo-unclustered', 'hydro-unclustered', 'piezo-excluded-layer', 'hydro-excluded-layer', 'basin-stations-layer'].filter(id => !!map.getLayer(id)) })
             if (stationHits.length > 0) return
             const feat = e.features?.[0]; if (!feat) return
             const bbox = computeBbox(feat.geometry)
@@ -547,7 +583,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
           })
           map.on('mouseleave', 'depts-fill', () => { if (hovId !== null) map.setFeatureState({ source: 'departments', id: hovId }, { hover: false }); hovId = null; setTooltip(null) })
           map.on('click', 'depts-fill', (e) => {
-            const stationHits = map.queryRenderedFeatures(e.point, { layers: ['piezo-clusters', 'hydro-clusters', 'piezo-unclustered', 'hydro-unclustered', 'basin-stations-layer'].filter(id => !!map.getLayer(id)) })
+            const stationHits = map.queryRenderedFeatures(e.point, { layers: ['piezo-clusters', 'hydro-clusters', 'piezo-unclustered', 'hydro-unclustered', 'piezo-excluded-layer', 'hydro-excluded-layer', 'basin-stations-layer'].filter(id => !!map.getLayer(id)) })
             if (stationHits.length > 0) return
             const feat = e.features?.[0]; if (!feat) return
             const bbox = computeBbox(feat.geometry)
@@ -580,7 +616,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
           })
           map.on('mouseleave', 'her-fill', () => { if (hovId !== null) map.setFeatureState({ source: 'her', id: hovId }, { hover: false }); hovId = null; setTooltip(null) })
           map.on('click', 'her-fill', (e) => {
-            const stationHits = map.queryRenderedFeatures(e.point, { layers: ['piezo-clusters', 'hydro-clusters', 'piezo-unclustered', 'hydro-unclustered', 'basin-stations-layer'].filter(id => !!map.getLayer(id)) })
+            const stationHits = map.queryRenderedFeatures(e.point, { layers: ['piezo-clusters', 'hydro-clusters', 'piezo-unclustered', 'hydro-unclustered', 'piezo-excluded-layer', 'hydro-excluded-layer', 'basin-stations-layer'].filter(id => !!map.getLayer(id)) })
             if (stationHits.length > 0) return
             const feat = e.features?.[0]; if (!feat) return
             const bbox = computeBbox(feat.geometry)
@@ -613,7 +649,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
           })
           map.on('mouseleave', 'bassins-fill', () => { if (hovId !== null) map.setFeatureState({ source: 'bassins', id: hovId }, { hover: false }); hovId = null; setTooltip(null) })
           map.on('click', 'bassins-fill', (e) => {
-            const stationHits = map.queryRenderedFeatures(e.point, { layers: ['piezo-clusters', 'hydro-clusters', 'piezo-unclustered', 'hydro-unclustered', 'basin-stations-layer'].filter(id => !!map.getLayer(id)) })
+            const stationHits = map.queryRenderedFeatures(e.point, { layers: ['piezo-clusters', 'hydro-clusters', 'piezo-unclustered', 'hydro-unclustered', 'piezo-excluded-layer', 'hydro-excluded-layer', 'basin-stations-layer'].filter(id => !!map.getLayer(id)) })
             if (stationHits.length > 0) return
             const feat = e.features?.[0]; if (!feat) return
             const code = feat.properties?.CdBH ?? null; const current = activeCodeBassinRef.current
@@ -630,7 +666,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
         setLayersReady(4)
       }).catch(err => console.error('Failed to load reference layers:', err))
 
-      // --- Click: individual station ---
+      // --- Click: individual station (active + excluded) ---
       map.on('click', 'piezo-unclustered', (e) => {
         const code = e.features?.[0]?.properties?.code
         if (code) onStationClickRef.current?.(code, 'piezo')
@@ -639,9 +675,17 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
         const code = e.features?.[0]?.properties?.code
         if (code) onStationClickRef.current?.(code, 'hydro')
       })
+      map.on('click', 'piezo-excluded-layer', (e) => {
+        const code = e.features?.[0]?.properties?.code
+        if (code) onStationClickRef.current?.(code, 'piezo')
+      })
+      map.on('click', 'hydro-excluded-layer', (e) => {
+        const code = e.features?.[0]?.properties?.code
+        if (code) onStationClickRef.current?.(code, 'hydro')
+      })
 
       // --- Cursor ---
-      const pointerLayers = ['piezo-unclustered', 'hydro-unclustered']
+      const pointerLayers = ['piezo-unclustered', 'hydro-unclustered', 'piezo-excluded-layer', 'hydro-excluded-layer']
       pointerLayers.forEach((layer) => {
         map.on('mouseenter', layer, () => { map.getCanvas().style.cursor = 'pointer' })
         map.on('mouseleave', layer, () => { map.getCanvas().style.cursor = '' })
@@ -652,7 +696,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
       // This general handler clears spatial filters when clicking on empty map background
       // (no features from any of our interactive layers at the clicked point).
       map.on('click', (e) => {
-        const stationLayers = ['piezo-clusters', 'hydro-clusters', 'piezo-unclustered', 'hydro-unclustered', 'basin-stations-layer']
+        const stationLayers = ['piezo-clusters', 'hydro-clusters', 'piezo-unclustered', 'hydro-unclustered', 'piezo-excluded-layer', 'hydro-excluded-layer', 'basin-stations-layer']
           .filter(id => !!map.getLayer(id))
         const stationHits = map.queryRenderedFeatures(e.point, { layers: stationLayers })
         if (stationHits.length > 0) return // clic sur une station, on ne clear pas
@@ -697,6 +741,14 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
     updateSource(mapRef.current, 'hydro-stations', all.filter(f => f.properties.type === 'hydro'))
   }, [features, updateSource])
 
+  // Sync excluded (grey) features
+  useEffect(() => {
+    if (!mapRef.current || !mapLoadedRef.current) return
+    const ex = excludedFeatures ?? []
+    updateSource(mapRef.current, 'piezo-excluded', ex.filter(f => f.properties.type === 'piezo'))
+    updateSource(mapRef.current, 'hydro-excluded', ex.filter(f => f.properties.type === 'hydro'))
+  }, [excludedFeatures, updateSource])
+
   // Toggle piezo/hydro visibility — all layers per source
   useEffect(() => {
     if (!mapRef.current || !mapLoadedRef.current) return
@@ -705,8 +757,8 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
       const vis = visible ? 'visible' : 'none'
       layers.forEach(id => { if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis) })
     }
-    toggle(['piezo-clusters', 'piezo-cluster-count', 'piezo-unclustered'], showPiezo)
-    toggle(['hydro-clusters', 'hydro-cluster-count', 'hydro-unclustered'], showHydro)
+    toggle(['piezo-clusters', 'piezo-cluster-count', 'piezo-unclustered', 'piezo-excluded-layer'], showPiezo)
+    toggle(['hydro-clusters', 'hydro-cluster-count', 'hydro-unclustered', 'hydro-excluded-layer'], showHydro)
   }, [showPiezo, showHydro, mapLoaded])
 
   // Toggle reference layer visibility — layers are preloaded on map init
@@ -767,31 +819,39 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
     ])
   }, [activeCodeBassin])
 
-  // Basin highlight: show basin stations unclustered + BDLISA polygon
+  // Basin/Site highlight: show related stations unclustered
   useEffect(() => {
     if (!mapRef.current || !mapLoadedRef.current) return
     const map = mapRef.current
 
-    if (highlightedBasinCode) {
-      // --- 1. Hide all station layers ---
+    const highlightCode = highlightedBasinCode || highlightedSiteCode
+    if (highlightCode) {
+      // --- 1. Hide all station layers (including excluded/grey) ---
       ;['piezo-clusters', 'piezo-cluster-count', 'piezo-unclustered',
-        'hydro-clusters', 'hydro-cluster-count', 'hydro-unclustered'].forEach(id => {
+        'hydro-clusters', 'hydro-cluster-count', 'hydro-unclustered',
+        'piezo-excluded-layer', 'hydro-excluded-layer'].forEach(id => {
         if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none')
       })
 
-      // --- 2. Create unclustered overlay with basin stations (search ALL features, not just filtered) ---
-      const basinFeatures = allFeaturesRef.current
-        .filter(f => f.properties.type === 'piezo' && f.properties.codes_bdlisa?.includes(highlightedBasinCode))
-      const basinGeoJSON = featuresToGeoJSON(basinFeatures)
+      // --- 2. Create unclustered overlay with related stations (search ALL features) ---
+      const isBasin = !!highlightedBasinCode
+      const overlayType: 'piezo' | 'hydro' = isBasin ? 'piezo' : 'hydro'
+      const overlayIcon = isBasin ? 'piezo-marker' : 'hydro-marker'
+      const relatedFeatures = allFeaturesRef.current
+        .filter(f => isBasin
+          ? f.properties.type === 'piezo' && f.properties.codes_bdlisa?.includes(highlightCode)
+          : f.properties.type === 'hydro' && f.properties.code_site === highlightCode
+        )
+      const relatedGeoJSON = featuresToGeoJSON(relatedFeatures)
 
       if (!map.getSource('basin-stations')) {
-        map.addSource('basin-stations', { type: 'geojson', data: basinGeoJSON as any })
+        map.addSource('basin-stations', { type: 'geojson', data: relatedGeoJSON as any })
         map.addLayer({
           id: 'basin-stations-layer',
           type: 'symbol',
           source: 'basin-stations',
           layout: {
-            'icon-image': 'piezo-marker',
+            'icon-image': overlayIcon,
             'icon-size': ['interpolate', ['linear'], ['zoom'], 4, 0.5, 8, 0.65, 12, 0.85],
             'icon-allow-overlap': true,
           },
@@ -802,17 +862,21 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
             'icon-halo-width': 0.8,
           },
         })
-        // Basin stations are clickable
+        // Related stations are clickable
         map.on('click', 'basin-stations-layer', (e) => {
           const code = e.features?.[0]?.properties?.code
-          if (code) onStationClickRef.current?.(code, 'piezo')
+          const type = e.features?.[0]?.properties?.type as 'piezo' | 'hydro' | undefined
+          if (code) onStationClickRef.current?.(code, type ?? overlayType)
         })
         map.on('mouseenter', 'basin-stations-layer', () => { map.getCanvas().style.cursor = 'pointer' })
         map.on('mouseleave', 'basin-stations-layer', () => { map.getCanvas().style.cursor = '' })
       } else {
         const src = map.getSource('basin-stations') as maplibregl.GeoJSONSource
-        src.setData(basinGeoJSON as any)
-        if (map.getLayer('basin-stations-layer')) map.setLayoutProperty('basin-stations-layer', 'visibility', 'visible')
+        src.setData(relatedGeoJSON as any)
+        if (map.getLayer('basin-stations-layer')) {
+          map.setLayoutProperty('basin-stations-layer', 'visibility', 'visible')
+          map.setLayoutProperty('basin-stations-layer', 'icon-image', overlayIcon)
+        }
       }
 
       // --- 3. Fade admin layers ---
@@ -821,9 +885,9 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
       adminFills.forEach(id => { if (map.getLayer(id)) map.setPaintProperty(id, 'fill-opacity', 0.03) })
       adminLines.forEach(id => { if (map.getLayer(id)) map.setPaintProperty(id, 'line-opacity', 0.1) })
 
-      // --- 4. Zoom to fit basin stations ---
-      if (basinFeatures.length > 0) {
-        const coords = basinFeatures.map(f => (f.geometry as GeoJSON.Point).coordinates)
+      // --- 4. Zoom to fit related stations ---
+      if (relatedFeatures.length > 0) {
+        const coords = relatedFeatures.map(f => (f.geometry as GeoJSON.Point).coordinates)
         const lngs = coords.map(c => c[0])
         const lats = coords.map(c => c[1])
         const bbox: [number, number, number, number] = [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)]
@@ -831,15 +895,15 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
       }
     } else {
       // --- Restore everything ---
-      // Hide basin overlay
+      // Hide overlay
       if (map.getLayer('basin-stations-layer')) map.setLayoutProperty('basin-stations-layer', 'visibility', 'none')
       // Restore station layers
       const piezoVis = showPiezoRef.current ? 'visible' : 'none'
       const hydroVis = showHydroRef.current ? 'visible' : 'none'
-      ;['piezo-clusters', 'piezo-cluster-count', 'piezo-unclustered'].forEach(id => {
+      ;['piezo-clusters', 'piezo-cluster-count', 'piezo-unclustered', 'piezo-excluded-layer'].forEach(id => {
         if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', piezoVis)
       })
-      ;['hydro-clusters', 'hydro-cluster-count', 'hydro-unclustered'].forEach(id => {
+      ;['hydro-clusters', 'hydro-cluster-count', 'hydro-unclustered', 'hydro-excluded-layer'].forEach(id => {
         if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', hydroVis)
       })
       // Restore admin layer opacities
@@ -852,7 +916,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
       if (map.getLayer('bassins-fill')) map.setPaintProperty('bassins-fill', 'fill-opacity', ['case', ['==', ['get', 'CdBH'], activeCodeBassinRef.current ?? '$$NONE$$'], 0.35, ['boolean', ['feature-state', 'hover'], false], 0.20, 0.10])
       if (map.getLayer('bassins-line')) map.setPaintProperty('bassins-line', 'line-opacity', 0.5)
     }
-  }, [highlightedBasinCode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [highlightedBasinCode, highlightedSiteCode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Highlight selected station with a ring
   useEffect(() => {
