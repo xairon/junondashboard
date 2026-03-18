@@ -76,6 +76,7 @@ interface Props {
   highlightedBasinCode?: string | null
   highlightedSiteCode?: string | null
   selectedStationCode?: string | null
+  showTerrain?: boolean
   flyToBbox?: [number, number, number, number] | null
   onFlyToComplete?: () => void
 }
@@ -338,6 +339,7 @@ export function ObservatoryMap({
   highlightedBasinCode = null,
   highlightedSiteCode = null,
   selectedStationCode = null,
+  showTerrain = false,
   flyToBbox = null,
   onFlyToComplete,
 }: Props) {
@@ -428,26 +430,7 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
       mapLoadedRef.current = true
       setMapLoaded(true)
 
-      // --- Terrain hillshading ---
-      map.addSource('terrain-dem', {
-        type: 'raster-dem',
-        tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
-        encoding: 'terrarium',
-        tileSize: 256,
-        maxzoom: 15,
-      })
-
-      map.addLayer({
-        id: 'hillshading',
-        type: 'hillshade',
-        source: 'terrain-dem',
-        paint: {
-          'hillshade-shadow-color': '#473B24',
-          'hillshade-highlight-color': '#ffffff',
-          'hillshade-exaggeration': 0.3,
-          'hillshade-illumination-direction': 315,
-        },
-      }, map.getStyle().layers.find(l => l.type === 'symbol')?.id)
+      // --- Terrain hillshading (lazy — added on first toggle, not at startup) ---
 
       // --- Override basemap labels to French ---
       const style = map.getStyle()
@@ -760,6 +743,38 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
     toggle(['piezo-clusters', 'piezo-cluster-count', 'piezo-unclustered', 'piezo-excluded-layer'], showPiezo)
     toggle(['hydro-clusters', 'hydro-cluster-count', 'hydro-unclustered', 'hydro-excluded-layer'], showHydro)
   }, [showPiezo, showHydro, mapLoaded])
+
+  // Toggle terrain hillshading — lazy-loaded on first activation to avoid startup cost
+  useEffect(() => {
+    if (!mapRef.current || !mapLoadedRef.current) return
+    const map = mapRef.current
+    if (showTerrain) {
+      if (!map.getSource('terrain-dem')) {
+        map.addSource('terrain-dem', {
+          type: 'raster-dem',
+          tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+          encoding: 'terrarium',
+          tileSize: 256,
+          maxzoom: 15,
+        })
+        map.addLayer({
+          id: 'hillshading',
+          type: 'hillshade',
+          source: 'terrain-dem',
+          paint: {
+            'hillshade-shadow-color': '#473B24',
+            'hillshade-highlight-color': '#ffffff',
+            'hillshade-exaggeration': 0.3,
+            'hillshade-illumination-direction': 315,
+          },
+        }, map.getStyle().layers.find(l => l.type === 'symbol')?.id)
+      } else {
+        if (map.getLayer('hillshading')) map.setLayoutProperty('hillshading', 'visibility', 'visible')
+      }
+    } else {
+      if (map.getLayer('hillshading')) map.setLayoutProperty('hillshading', 'visibility', 'none')
+    }
+  }, [showTerrain, mapLoaded])
 
   // Toggle reference layer visibility — layers are preloaded on map init
   useEffect(() => {

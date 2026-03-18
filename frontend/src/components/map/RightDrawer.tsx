@@ -30,6 +30,8 @@ interface Props {
   setShowHydro: (v: boolean) => void
   showExcluded: boolean
   setShowExcluded: (v: boolean) => void
+  showTerrain: boolean
+  setShowTerrain: (v: boolean) => void
   filters: Filters
   setFilter: (key: string, value: string | string[] | undefined) => void
   filteredPiezo?: number
@@ -184,17 +186,30 @@ export function RightDrawer(props: Props) {
             >
               Hydrométrie
             </button>
-            <label className="flex items-center gap-2 mt-2 cursor-pointer group">
-              <input
-                type="checkbox"
-                checked={props.showExcluded}
-                onChange={() => props.setShowExcluded(!props.showExcluded)}
-                className="w-3.5 h-3.5 accent-gray-500 rounded"
-              />
-              <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors">
-                Stations filtrées <span className="text-text-secondary/60">(grises)</span>
-              </span>
-            </label>
+            <div className="flex flex-col gap-1 mt-2">
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={props.showExcluded}
+                  onChange={() => props.setShowExcluded(!props.showExcluded)}
+                  className="w-3.5 h-3.5 accent-gray-500 rounded"
+                />
+                <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors">
+                  Stations filtrées <span className="text-text-secondary/60">(grises)</span>
+                </span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={props.showTerrain}
+                  onChange={() => props.setShowTerrain(!props.showTerrain)}
+                  className="w-3.5 h-3.5 accent-amber-600 rounded"
+                />
+                <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors">
+                  Relief <span className="text-text-secondary/60">(topographie)</span>
+                </span>
+              </label>
+            </div>
           </div>
         </AccordionSection>
 

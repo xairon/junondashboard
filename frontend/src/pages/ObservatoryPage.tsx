@@ -124,7 +124,8 @@ export default function ObservatoryPage() {
   const [selectedStation, setSelectedStation] = useState<{ code: string; type: 'piezo' | 'hydro' } | null>(null)
   const [showPiezo, setShowPiezo] = useState(true)
   const [showHydro, setShowHydro] = useState(true)
-  const [showExcluded, setShowExcluded] = useState(true)
+  const [showExcluded, setShowExcluded] = useState(false)
+  const [showTerrain, setShowTerrain] = useState(false)
   const filteredFeatures = useMemo<StationGeoJSONFeature[]>(() => {
     const all = geojsonData?.features ?? []
     return all.filter(f => {
@@ -539,6 +540,7 @@ export default function ObservatoryPage() {
         highlightedBasinCode={highlightedBasinCode}
         highlightedSiteCode={highlightedSiteCode}
         selectedStationCode={selectedStation?.code ?? null}
+        showTerrain={showTerrain}
         flyToBbox={flyToBbox}
         onFlyToComplete={() => setFlyToBbox(null)}
       />
@@ -556,6 +558,8 @@ export default function ObservatoryPage() {
         setShowHydro={setShowHydro}
         showExcluded={showExcluded}
         setShowExcluded={setShowExcluded}
+        showTerrain={showTerrain}
+        setShowTerrain={setShowTerrain}
         filters={filters}
         setFilter={setFilter}
         filteredPiezo={stationCounts.filteredPiezo}
