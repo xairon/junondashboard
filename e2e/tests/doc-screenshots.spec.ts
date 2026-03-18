@@ -156,100 +156,87 @@ test('05 - clic zone zoom', async ({ page }) => {
 //  06. FICHE STATION — Navigate to station via search (GIF)
 // ─────────────────────────────────────────────
 test('06 - fiche station', async ({ page }) => {
-  await page.goto('/')
+  // Get a station with coordinates from the GeoJSON API to navigate directly
+  let lon = 2.35, lat = 48.85 // fallback: Paris
+  let stationCode = ''
+  try {
+    const response = await page.request.get('/api/v1/common/stations/geojson')
+    const data = await response.json()
+    if (data?.features?.length > 0) {
+      // Pick a station near center of France for a good screenshot
+      const feat = data.features.find((f: any) =>
+        f.geometry.coordinates[0] > 1 && f.geometry.coordinates[0] < 4 &&
+        f.geometry.coordinates[1] > 45 && f.geometry.coordinates[1] < 48 &&
+        f.properties.classification && f.properties.classification !== 'UNKNOWN'
+      ) || data.features[0]
+      lon = feat.geometry.coordinates[0]
+      lat = feat.geometry.coordinates[1]
+      stationCode = feat.properties.code
+    }
+  } catch { /* use fallback */ }
+
+  // Navigate to map centered on that station (zoomed in so markers are unclustered)
+  await page.goto(`/?lat=${lat}&lon=${lon}&zoom=12`)
   await waitForMap(page)
 
-  // Use search to find a station, then click the result — reliable way to open the drawer
-  const searchInput = page.locator('input[placeholder*="Station"]').first()
-  await searchInput.click()
-  await page.waitForTimeout(300)
-
-  // Get a station code from the API to search for it
-  let stationName = 'Paris'
-  try {
-    const response = await page.request.get('/api/v1/stations/piezo?limit=1')
-    const data = await response.json()
-    if (Array.isArray(data) && data.length > 0 && data[0].nom_commune) {
-      stationName = data[0].nom_commune
+  // Click on the canvas center where our station should be
+  const canvas = page.locator('canvas')
+  const box = await canvas.boundingBox()
+  if (box) {
+    const cx = box.x + box.width / 2
+    const cy = box.y + box.height / 2
+    // Try clicking at center and nearby points
+    const detailLink = page.locator('a', { hasText: 'Voir le détail' })
+    const points = [
+      [0, 0], [-20, -15], [20, 15], [-30, 10], [30, -10],
+      [0, -25], [0, 25], [-15, -25], [15, 25], [-40, 0], [40, 0],
+    ]
+    for (const [dx, dy] of points) {
+      await page.mouse.click(cx + dx, cy + dy)
+      await page.waitForTimeout(800)
+      if (await detailLink.count() > 0) break
     }
-  } catch { /* use default */ }
-
-  await searchInput.fill(stationName)
-  await page.waitForTimeout(2000) // Wait for results
-
-  // Click the first station result
-  const firstResult = page.locator('[role="option"]').first()
-    .or(page.locator('li').filter({ hasText: stationName }).first())
-    .or(page.locator('button').filter({ hasText: stationName }).first())
-  if (await firstResult.count() > 0) {
-    await firstResult.click()
-    await page.waitForTimeout(3000) // Wait for map zoom + drawer open
   }
 
-  // Check if drawer opened
-  const detailLink = page.locator('a', { hasText: 'Voir le détail' })
-  if (await detailLink.count() > 0) {
-    await screenshot(page, '06-fiche-station')
-  } else {
-    // Fallback: try clicking directly on the map after zooming
-    const canvas2 = page.locator('canvas')
-    const box2 = await canvas2.boundingBox()
-    if (box2) {
-      // Try multiple points around center
-      const points = [
-        [0.50, 0.50], [0.48, 0.48], [0.52, 0.52], [0.46, 0.50], [0.54, 0.50],
-        [0.50, 0.46], [0.50, 0.54], [0.44, 0.48], [0.56, 0.52],
-      ]
-      for (const [rx, ry] of points) {
-        await page.mouse.click(box2.x + box2.width * rx, box2.y + box2.height * ry)
-        await page.waitForTimeout(1000)
-        if (await detailLink.count() > 0) break
-      }
-    }
-    await page.waitForTimeout(500)
-    await screenshot(page, '06-fiche-station')
-  }
+  await page.waitForTimeout(500)
+  await screenshot(page, '06-fiche-station')
 })
 
 // ─────────────────────────────────────────────
 //  07. PAGE DETAIL — Navigate to real station (GIF)
 // ─────────────────────────────────────────────
 test('07 - page detail station', async ({ page }) => {
-  // Find a real station code with data
+  // Find a real station with classification data from the GeoJSON
   let code: string | null = null
   let stationType = 'piezo'
 
-  // Try piezo first, then hydro
-  for (const type of ['piezo', 'hydro']) {
-    try {
-      const response = await page.request.get(`/api/v1/stations/${type}?limit=5`)
-      const data = await response.json()
-      if (Array.isArray(data)) {
-        for (const station of data) {
-          const c = type === 'piezo' ? station.code_bss : station.code_station
-          if (c) { code = c; stationType = type; break }
-        }
-      }
-      if (code) break
-    } catch { /* try next */ }
-  }
+  try {
+    const response = await page.request.get('/api/v1/common/stations/geojson')
+    const data = await response.json()
+    if (data?.features?.length > 0) {
+      // Pick a station with a classification (not UNKNOWN) for a rich detail page
+      const feat = data.features.find((f: any) =>
+        f.properties.type === 'piezo' &&
+        f.properties.classification &&
+        f.properties.classification !== 'UNKNOWN'
+      ) || data.features[0]
+      code = feat.properties.code
+      stationType = feat.properties.type
+    }
+  } catch { /* skip */ }
 
   if (!code) {
-    // Last resort: try GeoJSON
+    // Fallback: try list endpoint
     try {
-      const response = await page.request.get('/api/v1/stations/geojson?type=piezo')
+      const response = await page.request.get('/api/v1/piezo/stations?limit=1')
       const data = await response.json()
-      if (data?.features?.length > 0) {
-        code = data.features[0].properties?.code
+      if (Array.isArray(data) && data.length > 0) {
+        code = data[0].code_bss
       }
     } catch { /* skip */ }
   }
 
-  if (code) {
-    await page.goto(`/station/${stationType}/${code}`)
-  } else {
-    await page.goto('/station/piezo/BSS000AAAA')
-  }
+  await page.goto(`/station/${stationType}/${code || 'BSS000AARC'}`)
 
   // Wait for charts to render
   try {
