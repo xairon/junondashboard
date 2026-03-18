@@ -173,22 +173,35 @@ test('06 - fiche station', async ({ page }) => {
 //  7. PAGE DETAIL — Station piézo
 // ─────────────────────────────────────────────
 test('07 - page détail station', async ({ page }) => {
-  // Navigate directly to a station detail (use a common BSS code pattern)
-  // First get a station code from the GeoJSON API
-  const response = await page.request.get('/api/v1/stations/geojson?type=piezo')
-  const geojson = await response.json()
-  const firstStation = geojson?.features?.[0]
-  const code = firstStation?.properties?.code
+  // Get a station code from the piezo list API (more reliable than GeoJSON)
+  let code: string | null = null
+  for (const endpoint of ['/api/v1/stations/geojson?type=piezo', '/api/v1/stations/piezo?limit=1']) {
+    try {
+      const response = await page.request.get(endpoint)
+      const data = await response.json()
+      if (Array.isArray(data) && data.length > 0) {
+        code = data[0].code_bss
+      } else if (data?.features?.length > 0) {
+        code = data.features[0].properties?.code
+      }
+      if (code) break
+    } catch { /* try next */ }
+  }
 
   if (code) {
     await page.goto(`/station/piezo/${code}`)
-    await page.waitForTimeout(3000) // Wait for charts to render
+    await page.waitForTimeout(5000) // Wait for charts to render
     await screenshot(page, '07-detail-station')
 
     // Scroll down to see charts
     await page.evaluate(() => window.scrollBy(0, 600))
-    await page.waitForTimeout(1000)
+    await page.waitForTimeout(1500)
     await screenshot(page, '07-detail-charts')
+  } else {
+    // Fallback: just screenshot the page with no data message
+    await page.goto('/station/piezo/BSS000AAAA')
+    await page.waitForTimeout(2000)
+    await screenshot(page, '07-detail-station')
   }
 })
 
@@ -217,14 +230,12 @@ test('10 - recherche universelle', async ({ page }) => {
   await page.goto('/')
   await waitForMap(page)
 
-  // Find search input and type
-  const searchInput = page.locator('input[placeholder*="echerch"]').or(page.locator('input[type="search"]')).first()
-  if (await searchInput.count() > 0) {
-    await searchInput.click()
-    await searchInput.fill('Loire')
-    await page.waitForTimeout(1500) // Wait for results dropdown
-    await screenshot(page, '10-recherche')
-  }
+  // Find search input by placeholder text
+  const searchInput = page.locator('input[placeholder*="Station"]').first()
+  await searchInput.click()
+  await searchInput.fill('Loire')
+  await page.waitForTimeout(2000) // Wait for results dropdown
+  await screenshot(page, '10-recherche')
 })
 
 // ─────────────────────────────────────────────

@@ -11,18 +11,27 @@ mkdir -p "$OUTPUT_DIR"
 
 echo "Converting videos from $VIDEO_DIR to GIFs in $OUTPUT_DIR..."
 
-find "$VIDEO_DIR" -name "*.webm" | while read -r video; do
-  # Extract test name from path: .../test-title-chromium/video.webm → test-title
-  dir=$(dirname "$video")
-  test_name=$(basename "$dir" | sed 's/-chromium$//' | sed 's/-Chromium$//')
+# List all video directories to understand naming
+echo "Available video files:"
+find "$VIDEO_DIR" -name "*.webm" -print 2>/dev/null
 
-  # Skip non-doc tests
-  if [[ ! "$test_name" =~ ^[0-9]{2}- ]]; then
+find "$VIDEO_DIR" -name "*.webm" -print0 | while IFS= read -r -d '' video; do
+  # Extract test name from path
+  # Playwright creates dirs like: tests-doc-screenshots-spec-ts-01---carte-vue-d-ensemble-chromium/video.webm
+  dir=$(dirname "$video")
+  dir_name=$(basename "$dir")
+
+  # Extract the NN-name pattern from the directory name
+  # Match digits at start or after last ---
+  test_name=$(echo "$dir_name" | grep -oP '\d{2}[^/]*' | head -1 | sed 's/-chromium$//' | sed 's/-Chromium$//')
+
+  if [ -z "$test_name" ]; then
+    echo "  SKIP: $dir_name (no test name pattern found)"
     continue
   fi
 
   gif="$OUTPUT_DIR/${test_name}.gif"
-  echo "  $test_name → $gif"
+  echo "  $dir_name → $gif"
 
   # Generate palette for better quality, resize to 720p, 10fps
   palette=$(mktemp /tmp/palette-XXXXXX.png)
@@ -37,8 +46,12 @@ find "$VIDEO_DIR" -name "*.webm" | while read -r video; do
   rm -f "$palette"
 
   # Report size
-  size=$(du -h "$gif" | cut -f1)
-  echo "    → $size"
+  if [ -f "$gif" ]; then
+    size=$(du -h "$gif" | cut -f1)
+    echo "    → $size"
+  else
+    echo "    → FAILED"
+  fi
 done
 
 echo ""
