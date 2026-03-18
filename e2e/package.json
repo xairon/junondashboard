@@ -4,7 +4,8 @@
   "scripts": {
     "test": "playwright test",
     "test:headed": "playwright test --headed",
-    "test:ui": "playwright test --ui"
+    "test:ui": "playwright test --ui",
+    "docs:screenshots": "playwright test doc-screenshots --reporter=list && bash ./convert-videos-to-gif.sh ./test-results ./docs-assets"
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0"

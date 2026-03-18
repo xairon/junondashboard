@@ -71,6 +71,7 @@ services:
     profiles: ["test"]
     volumes:
       - ./e2e/report:/e2e/report
+      - ./docs/assets:/e2e/docs-assets
     environment:
       - BASE_URL=http://nginx:80
 

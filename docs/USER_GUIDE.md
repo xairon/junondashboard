@@ -47,6 +47,8 @@ La plateforme est accessible via 4 pages principales, accessibles depuis la barr
 
 La page principale affiche une carte de France avec l'ensemble des stations de mesure.
 
+![Vue d'ensemble de la carte](assets/01-carte-overview.png)
+
 ### Stations
 
 Les stations apparaissent sous forme de marqueurs colorés sur la carte :
@@ -117,6 +119,8 @@ Le premier nombre est le nombre de stations filtrées (visibles en couleur), le 
 
 Le panneau de contrôle s'ouvre en cliquant sur l'icône de calques (en haut à droite de la carte). Il est organisé en sections repliables.
 
+![Panneau de contrôle](assets/02-panneau-controle.png)
+
 ### Section « Données »
 
 Active ou désactive l'affichage des deux types de stations :
@@ -150,6 +154,8 @@ Quand cette case est cochée (par défaut), seules les stations ayant reçu au m
 Filtrer par code de département INSEE (ex: `75` pour Paris).
 
 #### Classification
+
+![Filtre par classification](assets/03-filtre-classification.png)
 
 Filtrer par niveau de classification. Cliquer sur un ou plusieurs niveaux pour ne voir que les stations correspondantes. Les boutons sont colorés selon le code couleur standard :
 
@@ -185,6 +191,8 @@ Permet d'activer/désactiver les calques de fond décrits plus haut. Les calques
 
 ## Fiche station (volet gauche)
 
+![Fiche station](assets/06-fiche-station.png)
+
 Un clic sur une station ouvre un volet sur la gauche de la carte avec un résumé :
 
 - **En-tête** — nom de la commune, type de station (piézo/hydro), badge de classification coloré
@@ -204,6 +212,8 @@ Les stations inactives (pas de données depuis plus de 90 jours) n'affichent pas
 ## Détail station
 
 La page de détail (`/station/:type/:code`) fournit une analyse complète d'une station individuelle.
+
+![Page détail station](assets/07-detail-station.png)
 
 ### KPI (indicateurs clés)
 
@@ -248,6 +258,8 @@ Graphique montrant la position de la valeur annuelle dans la distribution histor
 
 La timeline est un curseur horizontal en bas de la carte qui permet de rejouer l'historique des classifications mois par mois.
 
+![Timeline historique](assets/11-timeline.png)
+
 ### Utilisation
 
 1. Cliquer sur le bouton play (▶) pour lancer la lecture automatique
@@ -286,6 +298,8 @@ Quand la timeline est active et le filtre « Données année en cours » coché 
 ## Alertes
 
 La page Alertes (`/alerts`) liste les stations actives en situation anormale.
+
+![Page alertes](assets/08-alertes.png)
 
 ### Critères
 
@@ -345,6 +359,8 @@ Chaque courbe oscille ainsi autour de 0, avec des amplitudes comparables. Un z-s
 ---
 
 ## Recherche universelle
+
+![Recherche universelle](assets/10-recherche.png)
 
 La barre de recherche en haut à gauche de la carte permet de trouver rapidement n'importe quel élément :
 
