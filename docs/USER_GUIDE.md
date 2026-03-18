@@ -49,14 +49,18 @@ La page principale affiche une carte de France avec l'ensemble des stations de m
 
 ![Vue d'ensemble de la carte](assets/01-carte-overview.png)
 
-![Chargement de la carte](assets/01---carte-vue-d-ensemble.gif)
+### Panneau de contrôle
+
+Le panneau de contrôle s'ouvre en cliquant sur l'icône de calques (en haut à droite de la carte). Il est organisé en 3 sections repliables : **Données**, **Filtres** et **Calques**.
+
+![Panneau de contrôle](assets/02-panneau-controle.png)
 
 ### Stations
 
 Les stations apparaissent sous forme de marqueurs colorés sur la carte :
 
 - **Stations piézométriques (eaux souterraines)** — marqueurs circulaires
-- **Stations hydrométriques (eaux de surface)** — marqueurs triangulaires
+- **Stations hydrométriques (eaux de surface)** — marqueurs en forme de goutte
 
 La couleur de chaque marqueur correspond à sa classification actuelle (voir [Système de classification](#système-de-classification)).
 
@@ -68,13 +72,13 @@ La couleur de chaque marqueur correspond à sa classification actuelle (voir [Sy
 
 Les marqueurs gris semi-transparents représentent des stations **exclues par les filtres actifs** (fiabilité insuffisante, pas de données récentes, etc.). Ces stations restent visibles pour donner une vue d'ensemble du réseau, mais ne sont pas comptabilisées dans les statistiques. Elles sont cliquables pour consulter leur fiche.
 
-Le toggle « Stations filtrées (grises) » dans le panneau de contrôle permet de les masquer complètement si souhaité.
+Les stations grises sont **désactivées par défaut** pour accélérer le chargement. Le toggle « Stations filtrées (grises) » dans la section Données du panneau de contrôle permet de les activer.
 
-![Toggle des stations grises](assets/13---toggle-stations-grises.gif)
+![Activation des stations grises](assets/13---toggle-stations-grises.gif)
 
 ### Calques de fond
 
-La carte propose plusieurs niveaux d'information géographique superposables :
+La carte propose plusieurs niveaux d'information géographique superposables.
 
 **Calques de zone (exclusifs — un seul actif à la fois) :**
 
@@ -89,6 +93,8 @@ La carte propose plusieurs niveaux d'information géographique superposables :
 | Sous-secteurs hydro. | Découpage SANDRE niveau 3 (visible à partir du zoom 7) |
 | Zones hydrographiques | Découpage SANDRE le plus fin (visible à partir du zoom 9) |
 
+![Cycle des calques de zone](assets/04---calques-cycle.gif)
+
 **Calques superposables (combinables librement) :**
 
 | Calque | Description |
@@ -98,20 +104,19 @@ La carte propose plusieurs niveaux d'information géographique superposables :
 | Plans d'eau | Lacs et retenues (visible à partir du zoom 8) |
 | Masses d'eau DCE | Masses d'eau rivières au sens de la Directive Cadre sur l'Eau (visible à partir du zoom 8) |
 
-![Activation du calque cours d'eau](assets/12---calque-cours-d-eau.gif)
-
 **Relief (topographie) :** Un ombrage de terrain (hillshading) peut être activé via le toggle « Relief » dans la section Données du panneau de contrôle. Désactivé par défaut pour accélérer le chargement initial.
 
 ![Activation du relief](assets/14---toggle-relief.gif)
 
 ### Interactions avec la carte
 
-- **Clic sur une station** → ouvre la fiche station dans le volet gauche
 - **Clic sur une zone** (région, département, bassin, HER) → zoom sur la zone et filtre spatial les stations contenues
+
+![Clic sur une zone et zoom](assets/05---clic-zone-zoom.gif)
+
+- **Clic sur une station** → ouvre la fiche station dans le volet gauche (voir section suivante)
 - **Clic sur le fond vide** → réinitialise le filtre spatial et ferme la fiche station
 - **Survol d'une zone** → affiche le nom de la zone en tooltip
-
-![Clic sur une région et zoom](assets/05---clic-zone-region.gif)
 
 ### Barre de KPI
 
@@ -127,19 +132,14 @@ Le premier nombre est le nombre de stations filtrées (visibles en couleur), le 
 
 ## Panneau de contrôle (volet droit)
 
-Le panneau de contrôle s'ouvre en cliquant sur l'icône de calques (en haut à droite de la carte). Il est organisé en sections repliables.
-
-![Panneau de contrôle](assets/02-panneau-controle.png)
-
-![Ouverture du panneau](assets/02---panneau-de-controle.gif)
-
 ### Section « Données »
 
-Active ou désactive l'affichage des deux types de stations :
+Active ou désactive l'affichage des types de données :
 
 - **Piézométrie** — stations d'eaux souterraines
 - **Hydrométrie** — stations d'eaux de surface
-- **Stations filtrées (grises)** — affiche ou masque les stations exclues par les filtres (visibles en gris)
+- **Stations filtrées (grises)** — affiche les stations exclues par les filtres (désactivé par défaut)
+- **Relief (topographie)** — ombrage du terrain (désactivé par défaut)
 
 ### Section « Filtres »
 
@@ -153,7 +153,7 @@ Trois niveaux de fiabilité basés sur la profondeur historique des données :
 | **Indicatives** | 5 à 9 ans | Résultat indicatif, historique limité |
 | **Insuffisantes** | < 5 ans | Historique trop court pour un calcul fiable |
 
-Par défaut, seules les stations **fiables** sont affichées en couleur. Les stations indicatives et insuffisantes apparaissent en gris. Cocher les cases correspondantes pour les inclure dans les stations colorées.
+Par défaut, seules les stations **fiables** sont affichées en couleur. Les stations indicatives et insuffisantes apparaissent en gris (si le toggle est activé). Cocher les cases correspondantes pour les inclure dans les stations colorées.
 
 #### Données année en cours uniquement
 
@@ -167,9 +167,7 @@ Filtrer par code de département INSEE (ex: `75` pour Paris).
 
 #### Classification
 
-![Filtre par classification](assets/03-filtre-classification.png)
-
-![Sélection d'un filtre de classification](assets/03---filtres-classification.gif)
+![Filtre par classification](assets/03---filtres-classification.gif)
 
 Filtrer par niveau de classification. Cliquer sur un ou plusieurs niveaux pour ne voir que les stations correspondantes. Les boutons sont colorés selon le code couleur standard :
 
@@ -201,15 +199,13 @@ Le bouton « Réinitialiser » en bas de la section supprime tous les filtres ac
 
 Permet d'activer/désactiver les calques de fond décrits plus haut. Les calques de zone sont exclusifs (un seul actif à la fois), les calques superposables sont indépendants.
 
-![Activation du calque départements](assets/04---calques-departements.gif)
-
 ---
 
 ## Fiche station (volet gauche)
 
-![Clic sur une station et ouverture de la fiche](assets/06---fiche-station.gif)
+Un clic sur une station ouvre un volet sur la gauche de la carte avec un résumé.
 
-Un clic sur une station ouvre un volet sur la gauche de la carte avec un résumé :
+![Ouverture de la fiche station](assets/06---fiche-station.gif)
 
 - **En-tête** — nom de la commune, type de station (piézo/hydro), badge de classification coloré
 - **Situation actuelle** — classification courante avec couleur
@@ -278,14 +274,14 @@ La timeline est un curseur horizontal en bas de la carte qui permet de rejouer l
 
 ### Utilisation
 
-1. Cliquer sur le bouton play (▶) pour lancer la lecture automatique
+1. Cliquer sur le bouton play pour lancer la lecture automatique
 2. Utiliser le curseur pour naviguer manuellement à une date précise
 3. La carte se met à jour en temps réel : chaque station change de couleur en fonction de sa classification à la période sélectionnée
 
 ### Contrôles
 
 - **Play / Pause** — lance ou arrête la lecture automatique
-- **Vitesse** — préréglages de ×0.5 à ×10
+- **Vitesse** — préréglages de x0.5 à x10
 - **Filtre de saison** — ne lire que certaines saisons (printemps, été, automne, hiver)
 - **Filtre d'année** — restreindre la plage d'années
 
@@ -316,8 +312,6 @@ Quand la timeline est active et le filtre « Données année en cours » coché 
 La page Alertes (`/alerts`) liste les stations actives en situation anormale.
 
 ![Page alertes](assets/08-alertes.png)
-
-![Navigation dans les alertes](assets/08---page-alertes.gif)
 
 ### Critères
 
@@ -378,11 +372,9 @@ Chaque courbe oscille ainsi autour de 0, avec des amplitudes comparables. Un z-s
 
 ## Recherche universelle
 
-![Recherche universelle](assets/10-recherche.png)
+La barre de recherche en haut à gauche de la carte permet de trouver rapidement n'importe quel élément.
 
-![Recherche en action](assets/10---recherche-universelle.gif)
-
-La barre de recherche en haut à gauche de la carte permet de trouver rapidement n'importe quel élément :
+![Recherche et sélection d'un résultat](assets/10---recherche-universelle.gif)
 
 | Catégorie | Exemples de recherche |
 |---|---|
@@ -472,7 +464,7 @@ Le système évalue la **fiabilité** de la classification de chaque station en 
 
 ### Filtrage
 
-Par défaut, seules les stations **fiables** sont affichées en couleur sur la carte. Les stations indicatives et insuffisantes apparaissent en gris. Le panneau de contrôle permet d'inclure les niveaux souhaités.
+Par défaut, seules les stations **fiables** sont affichées en couleur sur la carte. Les stations indicatives et insuffisantes apparaissent en gris (si activé). Le panneau de contrôle permet d'inclure les niveaux souhaités.
 
 ---
 

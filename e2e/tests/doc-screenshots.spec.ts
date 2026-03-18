@@ -3,23 +3,16 @@
  *
  * Run:   docker compose run --rm e2e npm run docs:screenshots
  * Output: /e2e/docs-assets/  (mounted volume → docs/assets/)
- *
- * Each test captures a specific feature for the user guide.
- * Videos are recorded per-test, then converted to GIF by the post-run script.
  */
 
-import { test, expect, type Page } from '@playwright/test'
+import { test, type Page } from '@playwright/test'
 import path from 'path'
 
 const ASSETS = path.join(__dirname, '..', 'docs-assets')
 
-/** Wait until the map is fully loaded: canvas rendered + station data visible in KPI bar */
+/** Wait until the map is fully loaded: canvas + station data in KPI bar + network idle */
 async function waitForMap(page: Page) {
-  // 1. Wait for MapLibre canvas to exist
   await page.waitForSelector('canvas', { timeout: 30_000 })
-
-  // 2. Wait for the GeoJSON API to return and stations to appear in KPI bar
-  //    The KPIBar shows numbers > 0 when data is ready (e.g. "4 250" or "1 200 / 5 300")
   await page.waitForFunction(() => {
     const els = document.querySelectorAll('.font-mono')
     for (const el of els) {
@@ -28,18 +21,12 @@ async function waitForMap(page: Page) {
     }
     return false
   }, { timeout: 45_000 })
-
-  // 3. Wait for basemap tiles to load — MapLibre uses WebGL so we can't read pixels.
-  //    Instead, wait for network idle (all tile fetches done) + generous buffer.
   await page.waitForLoadState('networkidle')
   await page.waitForTimeout(4000)
 }
 
-/** Wait for a page's main content to load (non-map pages) */
 async function waitForPageData(page: Page) {
-  // Wait for any loading spinner to disappear, or for actual content
   await page.waitForFunction(() => {
-    // Check that page has meaningful content (not just a loading state)
     const body = document.body.innerText
     return body.length > 100 && !body.includes('Chargement')
   }, { timeout: 20_000 })
@@ -50,199 +37,238 @@ async function screenshot(page: Page, name: string) {
   await page.screenshot({ path: path.join(ASSETS, `${name}.png`), fullPage: false })
 }
 
-// ─── Configure video recording per test ───
+/** Open the right drawer and optionally expand a section */
+async function openDrawer(page: Page, section?: string) {
+  await page.click('button[aria-label="Ouvrir le panneau"]')
+  await page.waitForTimeout(400)
+  if (section) {
+    const btn = page.locator('button', { hasText: section })
+    if (await btn.count() > 0) {
+      const expanded = await btn.getAttribute('aria-expanded')
+      if (expanded !== 'true') await btn.click()
+      await page.waitForTimeout(300)
+    }
+  }
+}
+
 test.use({
   video: { mode: 'on', size: { width: 1440, height: 900 } },
   viewport: { width: 1440, height: 900 },
 })
 
 // ─────────────────────────────────────────────
-//  1. CARTE — Vue d'ensemble
+//  01. CARTE — Vue d'ensemble (PNG only)
 // ─────────────────────────────────────────────
-test('01 - carte vue d\'ensemble', async ({ page }) => {
+test('01 - carte overview', async ({ page }) => {
   await page.goto('/')
   await waitForMap(page)
   await screenshot(page, '01-carte-overview')
 })
 
 // ─────────────────────────────────────────────
-//  2. PANNEAU DE CONTROLE — Ouverture
+//  02. PANNEAU DE CONTROLE (PNG only)
 // ─────────────────────────────────────────────
 test('02 - panneau de controle', async ({ page }) => {
   await page.goto('/')
   await waitForMap(page)
-
-  // Open right drawer
-  await page.click('button[aria-label="Ouvrir le panneau"]')
-  await page.waitForTimeout(500)
-
-  // Expand Données section if not already open
-  const donneesBtn = page.locator('button', { hasText: 'Données' })
-  if (await donneesBtn.count() > 0) {
-    const expanded = await donneesBtn.getAttribute('aria-expanded')
-    if (expanded !== 'true') await donneesBtn.click()
-    await page.waitForTimeout(300)
-  }
-
+  await openDrawer(page, 'Données')
   await screenshot(page, '02-panneau-controle')
 })
 
 // ─────────────────────────────────────────────
-//  3. FILTRES — Classification toggle
+//  03. FILTRES — Sélection classification (GIF)
 // ─────────────────────────────────────────────
 test('03 - filtres classification', async ({ page }) => {
   await page.goto('/')
   await waitForMap(page)
-
-  // Open drawer
-  await page.click('button[aria-label="Ouvrir le panneau"]')
-  await page.waitForTimeout(300)
-
-  // Expand Filtres section
-  const filtresBtn = page.locator('button', { hasText: 'Filtres' })
-  await filtresBtn.click()
+  await openDrawer(page, 'Filtres')
   await page.waitForTimeout(500)
 
-  // Click on TRES_BAS classification button
-  const tresBas = page.locator('button[aria-pressed]', { hasText: 'Très bas' })
-  if (await tresBas.count() > 0) {
-    await tresBas.click()
-    await page.waitForTimeout(1500) // Wait for map markers to update
+  // Click "Très bas" then "Bas" to show filtering in action
+  for (const label of ['Très bas', 'Bas']) {
+    const btn = page.getByRole('button', { name: label, exact: true })
+    if (await btn.count() > 0) {
+      await btn.click()
+      await page.waitForTimeout(1500)
+    }
   }
-
   await screenshot(page, '03-filtre-classification')
+  // Unclick to reset
+  for (const label of ['Très bas', 'Bas']) {
+    const btn = page.getByRole('button', { name: label, exact: true })
+    if (await btn.getAttribute('aria-pressed') === 'true') await btn.click()
+  }
+  await page.waitForTimeout(500)
 })
 
 // ─────────────────────────────────────────────
-//  4. CALQUES — Activation d'un calque zone
+//  04. CALQUES — Cycle all zone layers (GIF)
 // ─────────────────────────────────────────────
-test('04 - calques departements', async ({ page }) => {
+test('04 - calques cycle', async ({ page }) => {
   await page.goto('/')
   await waitForMap(page)
+  await openDrawer(page, 'Calques')
+  await page.waitForTimeout(500)
 
-  // Open drawer
-  await page.click('button[aria-label="Ouvrir le panneau"]')
-  await page.waitForTimeout(300)
+  // Regions is active by default — show it, then cycle through others
+  await page.waitForTimeout(1500)
 
-  // Expand Calques section
-  const calquesBtn = page.locator('button', { hasText: 'Calques' })
-  await calquesBtn.click()
-  await page.waitForTimeout(300)
-
-  // Click "Départements" checkbox
-  const deptsLabel = page.locator('label', { hasText: 'Départements' })
-  if (await deptsLabel.count() > 0) {
-    await deptsLabel.click()
-    await page.waitForTimeout(2500) // Wait for GeoJSON layer to render
+  const layers = ['Départements', 'Bassins', 'Hydroécorégions', 'Régions hydrographiques']
+  for (const label of layers) {
+    const layerLabel = page.locator('label', { hasText: label }).first()
+    if (await layerLabel.count() > 0) {
+      await layerLabel.click()
+      await page.waitForTimeout(2000) // Wait for layer to render
+    }
   }
 
-  await screenshot(page, '04-calque-departements')
+  // Back to regions
+  const regionsLabel = page.locator('label', { hasText: 'Régions' }).first()
+  if (await regionsLabel.count() > 0) {
+    await regionsLabel.click()
+    await page.waitForTimeout(1500)
+  }
+
+  await screenshot(page, '04-calques')
 })
 
 // ─────────────────────────────────────────────
-//  5. CLIC ZONE — Zoom sur une région
+//  05. INTERACTION — Clic zone → zoom (GIF)
 // ─────────────────────────────────────────────
-test('05 - clic zone region', async ({ page }) => {
+test('05 - clic zone zoom', async ({ page }) => {
   await page.goto('/')
   await waitForMap(page)
 
-  // Regions layer is active by default, click roughly on Île-de-France area
+  // Click on a region (roughly Nouvelle-Aquitaine, large area south-west)
   const canvas = page.locator('canvas')
   const box = await canvas.boundingBox()
   if (box) {
-    const x = box.x + box.width * 0.52
-    const y = box.y + box.height * 0.32
-    await page.mouse.click(x, y)
-    // Wait for zoom animation + tiles to reload
-    await page.waitForTimeout(3000)
+    // Click south-west area of France
+    await page.mouse.click(box.x + box.width * 0.38, box.y + box.height * 0.58)
+    await page.waitForTimeout(2500) // zoom animation
+    await screenshot(page, '05-clic-zone')
+    // Wait for zoom to settle
+    await page.waitForTimeout(1000)
   }
-
-  await screenshot(page, '05-zoom-region')
 })
 
 // ─────────────────────────────────────────────
-//  6. FICHE STATION — Clic sur une station
+//  06. FICHE STATION — Navigate to station via search (GIF)
 // ─────────────────────────────────────────────
 test('06 - fiche station', async ({ page }) => {
   await page.goto('/')
   await waitForMap(page)
 
-  // Zoom in to deaggregate clusters (3 double-clicks)
-  const canvas = page.locator('canvas')
-  const box = await canvas.boundingBox()
-  if (box) {
-    const cx = box.x + box.width / 2
-    const cy = box.y + box.height / 2
-    for (let i = 0; i < 3; i++) {
-      await page.mouse.dblclick(cx, cy)
-      await page.waitForTimeout(2000) // Wait for zoom + new tiles
+  // Use search to find a station, then click the result — reliable way to open the drawer
+  const searchInput = page.locator('input[placeholder*="Station"]').first()
+  await searchInput.click()
+  await page.waitForTimeout(300)
+
+  // Get a station code from the API to search for it
+  let stationName = 'Paris'
+  try {
+    const response = await page.request.get('/api/v1/stations/piezo?limit=1')
+    const data = await response.json()
+    if (Array.isArray(data) && data.length > 0 && data[0].nom_commune) {
+      stationName = data[0].nom_commune
     }
+  } catch { /* use default */ }
+
+  await searchInput.fill(stationName)
+  await page.waitForTimeout(2000) // Wait for results
+
+  // Click the first station result
+  const firstResult = page.locator('[role="option"]').first()
+    .or(page.locator('li').filter({ hasText: stationName }).first())
+    .or(page.locator('button').filter({ hasText: stationName }).first())
+  if (await firstResult.count() > 0) {
+    await firstResult.click()
+    await page.waitForTimeout(3000) // Wait for map zoom + drawer open
   }
 
-  // Try to click on station markers at various positions
-  const tryPoints = [
-    [0.50, 0.50], [0.48, 0.45], [0.52, 0.55], [0.45, 0.50], [0.55, 0.48],
-    [0.50, 0.42], [0.50, 0.58], [0.47, 0.52], [0.53, 0.47],
-    [0.42, 0.42], [0.58, 0.58], [0.40, 0.50], [0.60, 0.50],
-  ]
-  for (const [rx, ry] of tryPoints) {
-    if (box) {
-      await page.mouse.click(box.x + box.width * rx, box.y + box.height * ry)
-      await page.waitForTimeout(1000)
+  // Check if drawer opened
+  const detailLink = page.locator('a', { hasText: 'Voir le détail' })
+  if (await detailLink.count() > 0) {
+    await screenshot(page, '06-fiche-station')
+  } else {
+    // Fallback: try clicking directly on the map after zooming
+    const canvas2 = page.locator('canvas')
+    const box2 = await canvas2.boundingBox()
+    if (box2) {
+      // Try multiple points around center
+      const points = [
+        [0.50, 0.50], [0.48, 0.48], [0.52, 0.52], [0.46, 0.50], [0.54, 0.50],
+        [0.50, 0.46], [0.50, 0.54], [0.44, 0.48], [0.56, 0.52],
+      ]
+      for (const [rx, ry] of points) {
+        await page.mouse.click(box2.x + box2.width * rx, box2.y + box2.height * ry)
+        await page.waitForTimeout(1000)
+        if (await detailLink.count() > 0) break
+      }
     }
-    const drawer = page.locator('a', { hasText: 'Voir le détail' })
-    if (await drawer.count() > 0) break
+    await page.waitForTimeout(500)
+    await screenshot(page, '06-fiche-station')
   }
-
-  await page.waitForTimeout(500)
-  await screenshot(page, '06-fiche-station')
 })
 
 // ─────────────────────────────────────────────
-//  7. PAGE DETAIL — Station piézo
+//  07. PAGE DETAIL — Navigate to real station (GIF)
 // ─────────────────────────────────────────────
 test('07 - page detail station', async ({ page }) => {
-  // Get a station code from the API
+  // Find a real station code with data
   let code: string | null = null
-  for (const endpoint of ['/api/v1/stations/geojson?type=piezo', '/api/v1/stations/piezo?limit=1']) {
+  let stationType = 'piezo'
+
+  // Try piezo first, then hydro
+  for (const type of ['piezo', 'hydro']) {
     try {
-      const response = await page.request.get(endpoint)
+      const response = await page.request.get(`/api/v1/stations/${type}?limit=5`)
       const data = await response.json()
-      if (Array.isArray(data) && data.length > 0) {
-        code = data[0].code_bss
-      } else if (data?.features?.length > 0) {
-        code = data.features[0].properties?.code
+      if (Array.isArray(data)) {
+        for (const station of data) {
+          const c = type === 'piezo' ? station.code_bss : station.code_station
+          if (c) { code = c; stationType = type; break }
+        }
       }
       if (code) break
     } catch { /* try next */ }
   }
 
-  if (code) {
-    await page.goto(`/station/piezo/${code}`)
-    // Wait for the page to load AND charts to render
-    await page.waitForSelector('h1, h2', { timeout: 10_000 })
-    // Wait for at least one Recharts SVG to appear (chart rendered)
+  if (!code) {
+    // Last resort: try GeoJSON
     try {
-      await page.waitForSelector('.recharts-wrapper', { timeout: 15_000 })
-      await page.waitForTimeout(2000) // Extra time for chart animations
-    } catch {
-      await page.waitForTimeout(5000) // Fallback: just wait
-    }
-    await screenshot(page, '07-detail-station')
+      const response = await page.request.get('/api/v1/stations/geojson?type=piezo')
+      const data = await response.json()
+      if (data?.features?.length > 0) {
+        code = data.features[0].properties?.code
+      }
+    } catch { /* skip */ }
+  }
 
-    // Scroll down to see more charts
-    await page.evaluate(() => window.scrollBy(0, 600))
-    await page.waitForTimeout(2000)
-    await screenshot(page, '07-detail-charts')
+  if (code) {
+    await page.goto(`/station/${stationType}/${code}`)
   } else {
     await page.goto('/station/piezo/BSS000AAAA')
-    await page.waitForTimeout(3000)
-    await screenshot(page, '07-detail-station')
   }
+
+  // Wait for charts to render
+  try {
+    await page.waitForSelector('.recharts-wrapper', { timeout: 15_000 })
+    await page.waitForTimeout(2000)
+  } catch {
+    await page.waitForTimeout(5000)
+  }
+
+  await screenshot(page, '07-detail-station')
+
+  // Scroll to see more charts
+  await page.evaluate(() => window.scrollBy(0, 600))
+  await page.waitForTimeout(1500)
+  await screenshot(page, '07-detail-charts')
 })
 
 // ─────────────────────────────────────────────
-//  8. ALERTES
+//  08. ALERTES (PNG + GIF)
 // ─────────────────────────────────────────────
 test('08 - page alertes', async ({ page }) => {
   await page.goto('/alerts')
@@ -251,7 +277,7 @@ test('08 - page alertes', async ({ page }) => {
 })
 
 // ─────────────────────────────────────────────
-//  9. COMPARAISON
+//  09. COMPARAISON (PNG)
 // ─────────────────────────────────────────────
 test('09 - page comparer', async ({ page }) => {
   await page.goto('/compare')
@@ -260,38 +286,44 @@ test('09 - page comparer', async ({ page }) => {
 })
 
 // ─────────────────────────────────────────────
-//  10. RECHERCHE — Ouvrir et taper
+//  10. RECHERCHE — Search + click result → zoom (GIF)
 // ─────────────────────────────────────────────
 test('10 - recherche universelle', async ({ page }) => {
   await page.goto('/')
   await waitForMap(page)
 
-  // Find search input by placeholder
   const searchInput = page.locator('input[placeholder*="Station"]').first()
   await searchInput.click()
   await page.waitForTimeout(300)
   await searchInput.fill('Loire')
-  // Wait for results dropdown to appear
-  await page.waitForTimeout(2500)
+  await page.waitForTimeout(2500) // Wait for dropdown
+
   await screenshot(page, '10-recherche')
+
+  // Click the first result to show it zooming/selecting on the map
+  const firstResult = page.locator('[role="option"]').first()
+    .or(page.locator('li').first())
+  if (await firstResult.count() > 0) {
+    await firstResult.click()
+    await page.waitForTimeout(3000) // Wait for zoom animation
+  }
+
+  await screenshot(page, '10-recherche-result')
 })
 
 // ─────────────────────────────────────────────
-//  11. TIMELINE — Lecture
+//  11. TIMELINE — Play (GIF)
 // ─────────────────────────────────────────────
 test('11 - timeline historique', async ({ page }) => {
   await page.goto('/')
   await waitForMap(page)
 
-  // Look for play button in timeline
   const playBtn = page.locator('button[aria-label*="lay"]')
     .or(page.locator('button svg.lucide-play').locator('..'))
     .first()
   if (await playBtn.count() > 0) {
     await playBtn.click()
-    // Let it play several frames so the GIF shows the animation
     await page.waitForTimeout(6000)
-    // Pause
     await playBtn.click()
     await page.waitForTimeout(1000)
   }
@@ -300,78 +332,63 @@ test('11 - timeline historique', async ({ page }) => {
 })
 
 // ─────────────────────────────────────────────
-//  12. CALQUES WFS — Cours d'eau
+//  12. CALQUE COURS D'EAU (GIF)
 // ─────────────────────────────────────────────
 test('12 - calque cours d\'eau', async ({ page }) => {
   await page.goto('/')
   await waitForMap(page)
+  await openDrawer(page, 'Calques')
 
-  // Open drawer
-  await page.click('button[aria-label="Ouvrir le panneau"]')
-  await page.waitForTimeout(300)
-
-  // Expand Calques
-  const calquesBtn = page.locator('button', { hasText: 'Calques' })
-  await calquesBtn.click()
-  await page.waitForTimeout(300)
-
-  // Enable cours d'eau principaux
   const coursEau = page.locator('label', { hasText: 'Cours d\'eau principaux' })
   if (await coursEau.count() > 0) {
     await coursEau.click()
-    await page.waitForTimeout(3000) // WFS layers can be slow to render
+    await page.waitForTimeout(3000)
   }
 
   await screenshot(page, '12-calque-cours-eau')
 })
 
 // ─────────────────────────────────────────────
-//  13. STATIONS GRISES — Toggle
+//  13. STATIONS GRISES — Toggle on (GIF)
 // ─────────────────────────────────────────────
 test('13 - toggle stations grises', async ({ page }) => {
   await page.goto('/')
   await waitForMap(page)
+  await openDrawer(page, 'Données')
 
-  // Open drawer
-  await page.click('button[aria-label="Ouvrir le panneau"]')
-  await page.waitForTimeout(500)
-
-  // Grey stations are OFF by default — screenshot without them
+  // OFF by default — screenshot without
   await screenshot(page, '13-stations-grises-off')
 
   // Toggle ON
   const greyToggle = page.locator('label', { hasText: 'Stations filtrées' })
   if (await greyToggle.count() > 0) {
     await greyToggle.click()
-    await page.waitForTimeout(1500) // Wait for grey markers to appear
+    await page.waitForTimeout(1500)
   }
 
   await screenshot(page, '13-stations-grises-on')
 })
 
 // ─────────────────────────────────────────────
-//  14. TOGGLE RELIEF
+//  14. RELIEF — Toggle on (GIF)
 // ─────────────────────────────────────────────
 test('14 - toggle relief', async ({ page }) => {
   await page.goto('/')
   await waitForMap(page)
+  await openDrawer(page, 'Données')
 
-  // Open drawer
-  await page.click('button[aria-label="Ouvrir le panneau"]')
-  await page.waitForTimeout(500)
-
-  // Relief is OFF by default — toggle ON
+  // Toggle ON
   const reliefToggle = page.locator('label', { hasText: 'Relief' })
   if (await reliefToggle.count() > 0) {
     await reliefToggle.click()
-    await page.waitForTimeout(3000) // Wait for terrain tiles to load
+    await page.waitForTimeout(4000) // Terrain tiles need time
   }
 
   await screenshot(page, '14-relief')
 })
 
 // ─────────────────────────────────────────────
-//  15. ABOUT PAGE
+//  15. ABOUT PAGE (PNG)
 // ─────────────────────────────────────────────
 test('15 - page a propos', async ({ page }) => {
   await page.goto('/about')
