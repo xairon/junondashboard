@@ -9,4 +9,6 @@ redis-data/
 .DS_Store
 *.png
 *.jpeg
+!docs/assets/*.png
+!docs/assets/*.jpeg
 .playwright-mcp/
