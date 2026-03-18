@@ -1,6 +1,6 @@
-# Architecture — Hydro Dashboard
+# Architecture — Observatoire Hydrologique France
 
-Ce document décrit l'architecture technique du tableau de bord hydrologique, les patterns utilisés et les décisions de conception.
+Ce document décrit l'architecture technique, les patterns utilisés et les décisions de conception.
 
 ---
 
@@ -21,8 +21,7 @@ Ce document décrit l'architecture technique du tableau de bord hydrologique, le
 │   • Gzip compression (niveau 5)                                  │
 │   • Rate limiting : 30 req/s API, 60 req/s general              │
 │   • 20 connexions simultanées max par IP                         │
-│   • En-têtes de sécurité : X-Content-Type-Options, X-Frame-     │
-│     Options, Referrer-Policy, Permissions-Policy, X-XSS         │
+│   • En-têtes de sécurité (CSP, X-Frame-Options, etc.)           │
 │   • Proxy /api/ → backend:8000                                   │
 │   • Proxy /    → frontend:80 (Nginx servant le build React)     │
 └──────────────┬───────────────────────────────────────────────────┘
@@ -37,18 +36,20 @@ Ce document décrit l'architecture technique du tableau de bord hydrologique, le
 │             │   │   • Sérialisation orjson (FastJSONResponse)  │
 │   Port 80   │   │   • SQLAlchemy 2.0 async + asyncpg           │
 │  (interne)  │   │   • Redis cache-aside (redis-py async)       │
-└─────────────┘   └───────────────────┬───────────────────────────┘
-                                      │
-                         ┌────────────┴──────────────┐
-                         │                           │
-                ┌────────▼────────┐       ┌──────────▼──────────┐
-                │   PostgreSQL    │       │      Redis 7         │
-                │   (schéma gold) │       │   256 MB · LRU       │
-                │                 │       │   allkeys-lru        │
-                │   Mesures       │       │                      │
-                │   Agrégats      │       │   TTL par endpoint   │
-                │   Métadonnées   │       │   1h / 6h / 12h / 24h│
-                └─────────────────┘       └──────────────────────┘
+└─────────────┘   │   • Indices sécheresse (SPLI/SSFI/SPI)      │
+                  │   • Classification batch + fiabilité          │
+                  └───────────────────┬───────────────────────────┘
+                                     │
+                        ┌────────────┴──────────────┐
+                        │                           │
+               ┌────────▼────────┐       ┌──────────▼──────────┐
+               │   PostgreSQL    │       │      Redis 7         │
+               │   (schéma gold) │       │   256 MB · LRU       │
+               │                 │       │   allkeys-lru        │
+               │   Mesures       │       │                      │
+               │   Agrégats      │       │   TTL par endpoint   │
+               │   Métadonnées   │       │   1h / 6h / 12h / 24h│
+               └─────────────────┘       └──────────────────────┘
 ```
 
 ---
@@ -59,108 +60,121 @@ Ce document décrit l'architecture technique du tableau de bord hydrologique, le
 
 ```
 app/
-├── main.py           # Point d'entrée : création de l'app, middleware, lifespan
-├── config.py         # Settings Pydantic-settings (lecture .env + env vars)
-├── database.py       # Moteur SQLAlchemy async + session factory
-├── cache.py          # Helpers Redis (get_redis, cache_key, cached, cached_response)
-├── json_response.py  # FastJSONResponse : wrapper orjson pour FastAPI
-├── models/           # Modèles Pydantic de validation de réponse
-│   ├── station.py    # PiezoStationDetail, HydroStationDetail, StationPercentiles
-│   ├── timeseries.py # Schémas séries temporelles
-│   └── era5.py       # Schémas ERA5
-└── routers/          # Handlers de routes (1 router = 1 domaine métier)
-    ├── piezo.py      # /api/v1/piezo/ — stations, timeseries, trends, stats piézométriques
-    ├── hydro.py      # /api/v1/hydro/ — stations, timeseries, trends, stats hydrométriques
-    ├── common.py     # /api/v1/common/ — GeoJSON, alertes, stats nationales/départementales
-    ├── era5.py       # /api/v1/era5/ — données climatiques ERA5
-    └── wfs.py        # /api/v1/wfs/ — proxy WFS SANDRE (zonage, Carthage, masses d'eau DCE)
+├── main.py              # Point d'entrée : création de l'app, middleware, lifespan
+├── config.py            # Settings Pydantic-settings (lecture .env + env vars)
+├── database.py          # Moteur SQLAlchemy async + session factory
+├── cache.py             # Helpers Redis (get_redis, cache_key, cached, cached_response)
+├── json_response.py     # FastJSONResponse : wrapper orjson pour FastAPI
+├── drought.py           # Calcul des indices de sécheresse (SPLI, SSFI, SPI)
+├── classification.py    # Classification batch + fiabilité — cache Redis au startup
+├── models/              # Modèles Pydantic de validation de réponse
+│   ├── station.py       # PiezoStationDetail, HydroStationDetail, StationPercentiles
+│   ├── hydro.py         # Schémas spécifiques hydro
+│   ├── timeseries.py    # Schémas séries temporelles
+│   └── era5.py          # Schémas ERA5
+└── routers/             # Handlers de routes (1 router = 1 domaine métier)
+    ├── piezo.py         # /api/v1/piezo/ — stations, timeseries, trends, SPLI, SPI
+    ├── hydro.py         # /api/v1/hydro/ — stations, timeseries, trends, SSFI, SPI
+    ├── common.py        # /api/v1/common/ — GeoJSON, alertes, stats, timeline classifications
+    ├── era5.py          # /api/v1/era5/ — données climatiques ERA5
+    ├── wfs.py           # /api/v1/wfs/ — proxy WFS SANDRE
+    └── bdlisa.py        # /api/v1/bdlisa/ — entités hydrogéologiques (fichiers statiques)
 ```
 
-### Pattern Async et Lifespan
-
-Le serveur utilise la gestion de cycle de vie (`lifespan`) d'ASGI pour initialiser et libérer proprement les ressources :
+### Lifespan et Startup
 
 ```python
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup : vérification Redis
+    # 1. Vérification Redis
     r = get_redis()
     if r is not None:
         await r.ping()
+    # 2. Pré-chauffage WFS (8 calques SANDRE en cache Redis)
+    asyncio.create_task(wfs.warm_wfs_cache())
+    # 3. Calcul batch des classifications + fiabilité (~23k stations)
+    asyncio.create_task(warm_classification_cache())
     yield
-    # Shutdown : fermeture des pools de connexion
+    # Shutdown
     await redis_pool.aclose()
     await engine.dispose()
 ```
 
-Chaque requête obtient une session DB SQLAlchemy via `Depends(get_db)`. Les sessions sont des `AsyncSession` avec `expire_on_commit=False` pour éviter les lazy-loads post-commit.
+Le calcul de classification au startup :
+1. Charge les séries mensuelles de toutes les stations depuis la DB
+2. Calcule le SPLI (piézo) ou SSFI (hydro) du dernier mois pour chaque station
+3. Convertit en classe (7 seuils Météo-France)
+4. Calcule le niveau de fiabilité (comptage d'années distinctes avec >= 6 mois de données)
+5. Stocke le lookup dans Redis (`hydro:classifications:current`, TTL 24h)
 
-### Stratégie de Cache (Cache-Aside Pattern)
+### Indices de Sécheresse (`drought.py`)
 
-Le cache fonctionne selon le pattern "cache-aside" (lazy loading) :
+Trois indices standardisés calculés à la demande ou en batch :
+
+| Indice | Fonction | Méthode | Usage |
+|---|---|---|---|
+| **SPLI (IPS)** | `compute_spli()` | KDE (estimation par noyau) par mois calendaire | Stations piézométriques |
+| **SSFI** | `compute_ssfi()` | Distribution gamma par mois calendaire | Stations hydrométriques |
+| **SPI** | `compute_spi()` | Distribution gamma par mois calendaire | Précipitations (toutes stations) |
+
+Fonctions optimisées pour le batch :
+- `classify_latest_spli()` — calcul single-value SPLI pour la classification batch
+- `classify_latest_ssfi()` — idem pour SSFI
+
+Les calculs CPU-bound (KDE, fitting gamma) sont exécutés dans un thread pool via `asyncio.run_in_executor()` pour ne pas bloquer la boucle événements.
+
+### Classification Batch (`classification.py`)
 
 ```
-Requête entrante
-      │
-      ▼
-Redis disponible ?
-      │
-  oui │             non
-      ▼              ▼
-  GET key         Exécuter fetch_fn()
-      │                    │
-  hit │  miss              │
-      ▼    ▼               ▼
-  JSON  Exécuter      Stocker dans Redis
-brut  fetch_fn()       avec TTL
-      │    │                │
-      └────┴────────────────┘
-                │
-           Réponse HTTP
+Startup
+   │
+   ▼
+warm_classification_cache()
+   │
+   ├── Charge toutes les séries mensuelles (piézo + hydro)
+   │   via des sessions DB indépendantes (async_session())
+   │
+   ├── Pour chaque station :
+   │   ├── Calcule l'indice du dernier mois (SPLI ou SSFI)
+   │   ├── Convertit en classe (7 seuils)
+   │   └── Calcule la fiabilité (nb années >= 6 mois)
+   │
+   └── Stocke dans Redis :
+       ├── "hydro:classifications:current" → {"piezo": {code: class}, "hydro": {code: class}, "reliability": {code: level}}
+       └── TTL: 24 heures
 ```
+
+Le lookup est consommé par `get_classification_lookup()` dans les routers (GeoJSON, alertes, stats, détail, listes).
+
+### Stratégie de Cache (Cache-Aside)
 
 Deux helpers :
 
-- **`cached(r, key, ttl, fetch_fn)`** — Retourne un objet Python (désérialisé). Utilisé quand on a besoin de manipuler le résultat (ex: ajouter `X-Total-Count`).
-- **`cached_response(prefix, params, ttl, fetch_fn)`** — Retourne directement une `Response` HTTP. Stocke et restitue les bytes JSON bruts pour éviter la double sérialisation.
+- **`cached(r, key, ttl, fetch_fn)`** — Retourne un objet Python désérialisé. Utilisé quand on manipule le résultat avant la réponse.
+- **`cached_response(prefix, params, ttl, fetch_fn)`** — Retourne une `Response` HTTP brute. Stocke les bytes JSON directement pour éviter la double sérialisation. **Pattern préféré.**
 
-Les clés Redis ont la forme `hydro:<prefix>:<sha256_16chars>` où le hash est calculé sur les paramètres JSON sérialisés triés.
+Clés Redis : `hydro:<prefix>:<sha256_16chars>` (hash sur les paramètres JSON triés).
+
+### TTL Redis par Type
+
+| Type de données | TTL | Justification |
+|---|---|---|
+| Listes de stations / GeoJSON | 1h | Mise à jour quotidienne |
+| Alertes | 1h | Fraîcheur opérationnelle |
+| Séries journalières | 6h | Nouvelles mesures en fin de journée |
+| Agrégats mensuels / Tendances | 12h | Recalcul nocturne |
+| Annuels / Percentiles / ERA5 | 24h | Données stables |
+| WFS SANDRE | 24h | Données de référence |
+| Classifications | 24h | Batch au startup |
+| Comparaison multi-stations | 30min | Requêtes variées |
+
+### BDLISA (`bdlisa.py`)
+
+Les entités hydrogéologiques sont servies depuis des fichiers JSON statiques dans `backend/data/bdlisa/` via `FileResponse`. Pas de proxy HTTP ni de cache Redis — les fichiers sont copiés dans l'image Docker (`COPY data/ data/`).
 
 ### Sérialisation orjson
 
-`FastJSONResponse` remplace la classe de réponse JSON standard de FastAPI :
-
-```python
-class FastJSONResponse(JSONResponse):
-    media_type = "application/json"
-
-    def render(self, content):
-        return orjson.dumps(content)
-```
-
-orjson est 2–3× plus rapide que `json.dumps` standard et gère nativement `datetime`, `date`, `Decimal`, `UUID`.
-
-### Optimisations PostgreSQL
-
-**Pagination sans double requête :**
-
-```sql
-SELECT *, count(*) OVER() AS total_count
-FROM gold.dim_piezo_stations
-WHERE ...
-ORDER BY code_bss
-LIMIT :limit OFFSET :offset
-```
-
-La fonction fenêtre `COUNT(*) OVER()` calcule le total sur l'ensemble filtré en une seule passe, évitant un second `SELECT COUNT(*)`.
-
-**Requêtes parallèles (compare endpoint) :**
-
-```python
-results = await asyncio.gather(*(fetch_one(code) for code in stations))
-```
-
-Jusqu'à 10 requêtes DB simultanées pour l'endpoint de comparaison.
+`FastJSONResponse` remplace la réponse JSON standard de FastAPI. orjson est 2–3× plus rapide que `json.dumps` et gère nativement `datetime`, `date`, `Decimal`, `UUID`.
 
 ---
 
@@ -173,78 +187,93 @@ App (main.tsx)
 └── RouterProvider (routes.tsx)
     └── Layout (TopNav + Outlet)
         ├── ObservatoryPage (/)
-        │   ├── ObservatoryMap (MapLibre GL, Voyager basemap + terrain hillshading)
-        │   │   ├── Stations piézo/hydro (clusters avec offset)
+        │   ├── ObservatoryMap (MapLibre GL impératif)
+        │   │   ├── Stations piézo/hydro (clusters + excluded/grey)
         │   │   ├── Calques admin (régions, départements, bassins, HER)
-        │   │   ├── Calques WFS SANDRE (zonage, Carthage, masses d'eau DCE)
-        │   │   └── BDLISA (couche aquifères)
-        │   ├── RightDrawer (panneau droit : données / filtres / calques)
-        │   ├── StationDrawer (panneau gauche au clic : situation, tendance, historique)
-        │   └── KPIBar (statistiques nationales)
+        │   │   ├── Calques WFS SANDRE (zonage, Carthage, masses d'eau)
+        │   │   ├── BDLISA (aquifères)
+        │   │   └── Relief (hillshading, terrain AWS)
+        │   ├── SearchBar (recherche universelle multi-catégories)
+        │   ├── RightDrawer (données / filtres / calques)
+        │   ├── StationDrawer (volet gauche au clic)
+        │   ├── TimelineSlider (historique classifications mois par mois)
+        │   └── KPIBar (compteurs piézo/hydro)
         ├── StationPage (/station/:type/:code)
         │   ├── StationKPICards
         │   ├── ClassificationBadge
-        │   ├── TimeseriesChart (Recharts)
-        │   ├── PercentileChart
-        │   ├── CorrelationScatter
-        │   ├── SeasonalityChart
-        │   └── YearlyHeatmap
+        │   ├── TimeseriesChart (daily/monthly/yearly)
+        │   ├── DroughtIndexChart (SPLI/SSFI/SPI — barres 7 classes)
+        │   └── PercentileChart
         ├── AlertsPage (/alerts)
-        │   └── Onglets par sévérité (Très bas / Bas / Haut / Très haut)
-        │       └── Tableau par classification avec durée consécutive
-        └── ComparePage (/compare)
-            └── Multi-séries (jusqu'à 5 stations) avec normalisation z-score
+        │   └── Onglets par sévérité + historique consécutif
+        ├── ComparePage (/compare)
+        │   └── Multi-séries z-score normalisé (1–5 stations)
+        └── AboutPage (/about)
 ```
 
 ### Flux de Données
 
 ```
-URL / State
+URL search params (filtres)
     │
     ▼
-React Router (routes.tsx)
+useFilters() hook → sessionStorage persistence
     │
     ▼
 Page Component (lazy loaded)
     │
     ▼
-Custom Hook (useStations, useTimeseries, ...)
+Custom Hooks (useStations, useTimeseries, useERA5, useWfsLayer)
     │
     ▼
-TanStack Query (queryClient)
+TanStack Query (staleTime: 5 min)
     │
   cache hit ?
     │         │
   oui        non
     │         │
     ▼         ▼
-  Data     api.ts fetch()
-  depuis       │
-  cache        ▼
-          /api/v1/... (Nginx → FastAPI)
-               │
-               ▼
-          JSON Response
-               │
-               ▼
-        TanStack cache (staleTime)
-               │
-               ▼
-        Composant React (re-render)
+  Render    api.ts → fetch → /api/v1/... → Nginx → FastAPI
+                                 │
+                            JSON Response → TanStack cache → Render
 ```
 
-### Hooks Personnalisés (TanStack Query)
+### Gestion des Filtres
 
-Chaque domaine métier a son hook encapsulant la logique TanStack Query :
+L'état des filtres vit dans les **URL search params** (`useSearchParams`), pas dans un store global. Le hook `useFilters()` :
 
-- **`useStations(filters)`** — Liste de stations avec filtres réactifs
-- **`useTimeseries(code, type, granularity)`** — Séries temporelles avec sélection de granularité
-- **`useERA5(date)`** — Données climatiques pour l'overlay carte
-- **`useFilters()`** — État partagé des filtres (classification, département, etc.)
+1. Lit les params de l'URL au montage
+2. Restaure depuis `sessionStorage` si l'URL est vide (navigation retour)
+3. Persiste chaque changement dans `sessionStorage` et l'URL
+4. Expose `apiParams` pour les appels API
+
+Filtres disponibles : `active_only`, `min_obs`, `last_after`, `classif` (array), `dept`, `bdlisa`, `bassin`, `region`, `her`, `fiable`, `indicatif`, `insuffisant`.
+
+### Carte (ObservatoryMap)
+
+La carte utilise MapLibre GL en mode **impératif** (pas de wrapper React déclaratif). L'API `map.addSource()` / `map.addLayer()` est appelée directement via `useRef`.
+
+**Ordre des couches (du fond au dessus) :**
+1. Basemap Voyager + hillshading
+2. Calques WFS (SANDRE zonage, Carthage, masses d'eau)
+3. Calques admin (régions, départements, bassins, HER) — toujours au-dessus des WFS
+4. Stations clusters (piézo puis hydro)
+5. Stations excluded (grises, non clusterisées)
+6. Station sélectionnée (highlight)
+
+**Gestion des clics :** Chaque handler de clic sur un calque admin vérifie d'abord si une station est sous le curseur (`queryRenderedFeatures` sur les layers station + excluded). Si oui, le clic est ignoré pour laisser le handler station prendre la main.
+
+### Timeline
+
+Le composant `TimelineSlider` charge l'historique complet des classifications (`api.common.classificationTimeline()`) et émet des événements `onPeriodChange(index, timelineData)`.
+
+Quand la timeline est active :
+- `displayFeatures` est recalculé à partir de **toutes** les features (pas les filtrées), en ne gardant que celles avec données à la période sélectionnée
+- La classification de chaque station est remplacée par celle de la période timeline
+- `excludedFeatures` montre les stations "qui existaient mais n'ont plus de données" (gris) — seulement si `activeOnly` est coché
+- Les stations créées après la période timeline sont invisibles
 
 ### Code Splitting (Vite)
-
-La configuration Vite divise le bundle en 4 chunks vendeurs distincts pour optimiser le chargement initial :
 
 ```javascript
 manualChunks: {
@@ -255,21 +284,7 @@ manualChunks: {
 }
 ```
 
-Les pages sont chargées à la demande via `React.lazy()` + `Suspense`. L'utilisateur voit un spinner animé pendant le chargement.
-
-### Proxy de Développement
-
-En développement, Vite proxifie automatiquement les requêtes API :
-
-```javascript
-server: {
-  proxy: {
-    '/api': 'http://localhost:8000',
-  },
-}
-```
-
-Cela évite les problèmes CORS en développement et reflète fidèlement le comportement de production.
+Pages chargées à la demande via `React.lazy()` + `Suspense`.
 
 ---
 
@@ -277,131 +292,46 @@ Cela évite les problèmes CORS en développement et reflète fidèlement le com
 
 Toutes les tables sont dans le schéma `gold` de PostgreSQL.
 
-### Tables de Dimension (Métadonnées)
+### Tables de Dimension
 
 ```
 gold.dim_piezo_stations
-├── code_bss            PK  VARCHAR   Code BSS unique
-├── bss_id                  VARCHAR   Identifiant BSS complémentaire
-├── latitude                FLOAT     Latitude WGS84
-├── longitude               FLOAT     Longitude WGS84
-├── nom_commune             VARCHAR   Commune
-├── code_departement        VARCHAR   Code département INSEE
-├── nom_departement         VARCHAR   Nom département
-├── nb_mesures_total        INTEGER   Total mesures disponibles
-├── derniere_mesure         DATE      Date dernière mesure
-├── classification_derniere_annee  VARCHAR  Classification actuelle
-├── niveau_derniere_annee   FLOAT     Valeur de la dernière année
-├── tendance_classification VARCHAR   Tendance de pente de Sen
-├── codes_bdlisa            VARCHAR   Code masse d'eau BDLISA
+├── code_bss            PK  Code BSS unique
+├── latitude / longitude    Coordonnées WGS84
+├── nom_commune             Commune
+├── code_departement        Code département INSEE
+├── nb_mesures_total        Total mesures disponibles
+├── derniere_mesure         Date dernière mesure
+├── classification_derniere_annee  Classification DB (fallback)
+├── tendance_classification        Tendance pente de Sen
+├── codes_bdlisa                   Code masse d'eau BDLISA
 └── ... (50+ autres champs BSS)
 
 gold.dim_hydro_stations
-├── code_station        PK  VARCHAR   Code Hub'Eau unique
-├── code_site               VARCHAR   Code du site hydrométrique
-├── libelle_station         VARCHAR   Libellé de la station
-├── libelle_cours_eau       VARCHAR   Nom du cours d'eau
-├── latitude_station        FLOAT     Latitude WGS84
-├── longitude_station       FLOAT     Longitude WGS84
-├── code_departement        VARCHAR   Code département
-├── grandeur_hydro_principale  VARCHAR  Q (débit) ou H (hauteur)
-├── nb_jours_total          INTEGER   Jours de mesures
-├── derniere_mesure         DATE      Dernière mesure disponible
-├── classification_resultat_dern_annee  VARCHAR
+├── code_station        PK  Code Hub'Eau unique
+├── code_site               Code du site hydrométrique
+├── libelle_station         Libellé
+├── latitude_station / longitude_station
+├── grandeur_hydro_principale  Q (débit) ou H (hauteur)
+├── nb_jours_total             Jours de mesures
+├── derniere_mesure            Date dernière mesure
 └── ...
 ```
 
-### Tables de Faits (Mesures)
+### Tables de Faits
 
 ```
-gold.hubeau_daily_chroniques           -- Mesures journalières piézo
-├── code_bss                FK         Code BSS
-├── date                               Date de mesure
-├── niveau_nappe_eau                   Cote piézométrique (m NGF)
-├── profondeur_nappe                   Profondeur nappe (m)
-├── temperature_2m                     ERA5 température 2m (°C)
-├── total_precipitation                ERA5 précipitations (m)
-└── potential_evaporation              ERA5 ETP (m)
-
-gold.hydro_daily_chroniques            -- Mesures journalières hydro
-├── code_station            FK
-├── date
-├── resultat_obs_elab                  Débit (m³/s) ou Hauteur (m)
-├── grandeur_hydro_elab                Q ou H
-└── ... (données ERA5 identiques)
-
-gold.fct_monthly_chroniques            -- Agrégats mensuels piézo
-├── code_bss                FK
-├── mois                               Premier jour du mois
-├── niveau_moyen / min / max
-├── amplitude_mensuelle
-├── niveau_moy_mobile_3m               Moyenne mobile 3 mois
-├── niveau_moy_mobile_12m              Moyenne mobile 12 mois
-├── variation_niveau_vs_mois_prec
-└── variation_niveau_vs_annee_prec
-
-gold.fct_yearly_stats                  -- Statistiques annuelles piézo
-├── code_bss                FK
-├── annee
-├── niveau_moyen_annuel / min / max
-├── percentile_niveau_historique       Rang percentile 0–100
-├── classification_niveau_annuel
-└── niveau_moy_mobile_5ans
-
-gold.agg_station_trends                -- Tendances pente de Sen (piézo)
-├── code_bss                FK
-├── saison                             annuel / printemps / ete / automne / hiver
-├── variation_annuelle_m               Variation en m/an
-├── fiabilite_tendance                 Indice 0–1
-├── nb_points                          Points utilisés
-├── classification_tendance
-└── projection_variation_5ans_m
-
-gold.int_era5_for_stations             -- ERA5 interpolé aux stations
-├── era5_date
-├── latitude
-├── longitude
-├── temperature_2m
-├── total_precipitation
-└── potential_evaporation
-
-gold.int_era5_grid_points              -- Points de grille ERA5
-├── era5_latitude
-└── era5_longitude
+gold.hubeau_daily_chroniques       — Mesures journalières piézo + ERA5
+gold.hydro_daily_chroniques        — Mesures journalières hydro + ERA5
+gold.fct_monthly_chroniques        — Agrégats mensuels piézo (moyennes mobiles 3/12 mois)
+gold.fct_monthly_hydro             — Agrégats mensuels hydro
+gold.fct_yearly_stats              — Statistiques annuelles piézo (percentile, classification)
+gold.fct_yearly_hydro              — Statistiques annuelles hydro
+gold.agg_station_trends            — Tendances Sen piézo (par saison)
+gold.agg_hydro_trends              — Tendances Sen hydro (par saison)
+gold.int_era5_for_stations         — ERA5 interpolé aux stations
+gold.int_era5_grid_points          — Points de grille ERA5
 ```
-
----
-
-## Couches de Cache
-
-### Stratégie Globale
-
-Le système utilise deux niveaux de cache :
-
-1. **Cache Redis (serveur)** — Données brutes de la DB, TTL configurable par endpoint
-2. **Cache TanStack Query (client)** — Données reçues par le browser, staleTime par type
-
-### TTL Redis par Type de Données
-
-| Type de données | TTL | Justification |
-|---|---|---|
-| Listes de stations | 1 heure | Mise à jour quotidienne max |
-| Détails de station | 1 heure | Métadonnées stables |
-| GeoJSON carte | 1 heure | Même fréquence de mise à jour |
-| Séries temporelles journalières | 6 heures | Nouvelles mesures en fin de journée |
-| Agrégats mensuels | 12 heures | Calculs recalculés la nuit |
-| Tendances | 12 heures | Calculs hebdomadaires |
-| Statistiques nationales/dépt | 6 heures | Actualisées toutes les 6h |
-| Statistiques annuelles | 24 heures | Données historiques stables |
-| Percentiles historiques | 24 heures | Basés sur l'historique complet |
-| Données ERA5 | 24 heures | Mises à jour mensuelles |
-| Alertes | 1 heure | Fraîcheur opérationnelle |
-| Comparaison multi-stations | 30 minutes | Requêtes variées, TTL court |
-| WFS SANDRE (zonage, Carthage) | 24 heures | Données de référence, rarement modifiées |
-
-### Comportement en cas d'Indisponibilité Redis
-
-Le cache est **optionnel** : si Redis est indisponible ou non configuré, le système fonctionne normalement en interrogeant directement la base de données. Aucune exception n'est levée — un avertissement est logué.
 
 ---
 
@@ -409,140 +339,63 @@ Le cache est **optionnel** : si Redis est indisponible ou non configuré, le sys
 
 ### Services Docker Compose
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Docker Compose Network                        │
-│                                                                  │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────────┐   │
-│  │    nginx     │    │   backend    │    │    frontend      │   │
-│  │              │    │              │    │                  │   │
-│  │  Port 80:80  │───▶│  Port 8000   │    │  Port 80 (int.)  │   │
-│  │  256 MB RAM  │    │  1 GB RAM    │◀───│  (Nginx build)   │   │
-│  │  0.5 CPU     │    │  1.0 CPU     │    │                  │   │
-│  └──────────────┘    └──────┬───────┘    └──────────────────┘   │
-│                             │                                    │
-│                      ┌──────▼───────┐                           │
-│                       │    redis     │                          │
-│                       │              │                          │
-│                       │  Port 6379   │                          │
-│                       │  512 MB RAM  │                          │
-│                       │  0.5 CPU     │                          │
-│                       │  allkeys-lru │                          │
-│                       └──────────────┘                          │
-└─────────────────────────────────────────────────────────────────┘
+4 services : `redis`, `backend`, `frontend`, `nginx`.
 
-┌─────────────────────────────────────────────────────────────────┐
-│                  PostgreSQL (externe au Compose)                 │
-│            Schéma gold · Toutes les tables de données            │
-└─────────────────────────────────────────────────────────────────┘
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Docker Compose Network                    │
+│                                                             │
+│  ┌────────┐   ┌───────────┐   ┌──────────┐   ┌────────┐   │
+│  │ nginx  │──▶│  backend  │──▶│  redis   │   │frontend│   │
+│  │ :80    │   │  :8000    │   │  :6379   │   │ :80    │   │
+│  └────────┘   └─────┬─────┘   └──────────┘   └────────┘   │
+│                     │                                       │
+└─────────────────────┼───────────────────────────────────────┘
+                      │
+             ┌────────▼────────┐
+             │   PostgreSQL    │
+             │   (externe)     │
+             │   schéma gold   │
+             └─────────────────┘
 ```
 
 ### Healthchecks
 
-| Service | Commande de vérification | Interval | Retries |
+| Service | Commande | Interval | Retries |
 |---|---|---|---|
 | `redis` | `redis-cli ping` | 5s | 5 |
-| `backend` | `urllib.request.urlopen('http://localhost:8000/api/v1/health')` | 10s | 5 |
+| `backend` | HTTP GET `/api/v1/health` | 10s | 5 |
 
-Le service `nginx` dépend de `backend` (condition `service_healthy`) et `frontend` (condition `service_started`). Le service `backend` dépend de `redis` (condition `service_healthy`).
-
-### Nginx : Configuration Sécurité et Performance
-
-**En-têtes de sécurité :**
-
-```nginx
-add_header X-Content-Type-Options nosniff always;
-add_header X-Frame-Options SAMEORIGIN always;
-add_header Referrer-Policy strict-origin-when-cross-origin always;
-add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
-add_header X-XSS-Protection "1; mode=block" always;
-```
-
-**Rate limiting :**
-
-```nginx
-limit_req_zone $binary_remote_addr zone=api:10m rate=30r/s;
-limit_req_zone $binary_remote_addr zone=general:10m rate=60r/s;
-limit_conn_zone $binary_remote_addr zone=connlimit:10m;
-```
-
-**Buffering proxy :**
-
-```nginx
-proxy_buffer_size 4k;
-proxy_buffers 4 8k;
-```
+Dépendances : `nginx` attend `backend` (healthy) + `frontend` (started). `backend` attend `redis` (healthy).
 
 ---
 
 ## Décisions de Conception
 
-### Pourquoi SQLAlchemy 2.0 async + asyncpg ?
+### SPLI/SSFI plutôt que percentiles bruts
 
-L'API est entièrement asynchrone (ASGI avec Uvicorn). SQLAlchemy 2.0 avec le driver `asyncpg` permet d'émettre des requêtes SQL sans bloquer la boucle d'événements. `asyncpg` est le driver PostgreSQL async le plus performant disponible pour Python (connexions binaires, pas de conversion de types intermédiaire).
+Le passage des percentiles (P10/P25/P75/P90, 5 classes) aux indices standardisés (7 classes Météo-France) permet :
+- Un alignement avec les standards nationaux (BSH, ADES, DREAL)
+- Une granularité plus fine (7 classes vs 5)
+- Une meilleure comparabilité entre stations (indices normalisés)
 
-### Pourquoi orjson plutôt que json standard ?
+### Calcul on-the-fly plutôt que ETL
 
-orjson est implémenté en Rust. Il gère nativement `datetime`, `date`, `Decimal`, `UUID` et `numpy` sans encodeurs personnalisés, et est 2–3× plus rapide que la bibliothèque standard. Dans un contexte de tableau de bord avec de nombreuses séries temporelles, cela représente une amélioration mesurable des temps de réponse.
+Les indices sont calculés au démarrage du backend plutôt que dans le pipeline ETL. Avantages :
+- Pas de modification du pipeline de données
+- Recalcul automatique à chaque redémarrage
+- Isolation du code métier dans `drought.py` / `classification.py`
 
-### Pourquoi Redis en mode cache-aside plutôt que write-through ?
+### BDLISA statique plutôt que proxy
 
-Les données proviennent d'une source externe (Hub'Eau API, ERA5 Copernicus) ingérée en batch. Le cache-aside avec TTL est approprié car :
-- Les données ne changent pas à la fréquence des requêtes
-- En cas de panne Redis, la DB prend le relais sans perte de service
-- Pas de risque d'incohérence écriture-lecture
+Les données BDLISA sont servies depuis des fichiers JSON statiques plutôt que via un proxy SANDRE API. Avantages :
+- Latence minimale (lecture disque locale)
+- Pas de dépendance à un service externe
+- Pas de cache Redis nécessaire
 
-### Pourquoi TanStack Query v5 côté client ?
+### MapLibre impératif plutôt que déclaratif
 
-TanStack Query gère automatiquement le cache, la deduplication des requêtes identiques, le background refetch et les états de chargement/erreur. Couplé au cache Redis côté serveur, le tableau de bord n'émet en pratique des requêtes réseau que lors du premier accès à une donnée dans la session.
-
-### Pourquoi MapLibre GL plutôt que Mapbox GL ou Leaflet ?
-
-MapLibre GL est un fork open-source de Mapbox GL JS v1 sans licence propriétaire. Il est compatible avec les tuiles vectorielles standards (OpenMapTiles, MapTiler, etc.) et offre les performances WebGL nécessaires pour afficher plusieurs milliers de marqueurs simultanément avec interactions fluides.
-
----
-
-## Sources de Données
-
-### Données Stations (PostgreSQL)
-
-| Source | Tables | Description |
-|---|---|---|
-| **Hub'Eau / BRGM** | `dim_piezo_stations`, `hubeau_daily_chroniques`, `fct_monthly_chroniques`, `fct_yearly_stats` | Données piézométriques (eaux souterraines) |
-| **Hub'Eau / SCHAPI** | `dim_hydro_stations`, `hydro_daily_chroniques`, `fct_monthly_hydro`, `fct_yearly_hydro` | Données hydrométriques (eaux de surface) |
-| **ERA5 / ECMWF** | `int_era5_for_stations`, `int_era5_grid_points` | Réanalyse climatique (température, précipitations, évaporation) |
-| **BRGM** | `agg_station_trends`, `agg_hydro_trends` | Tendances calculées (pente de Sen) |
-
-### Calques Carte
-
-#### Calques WFS (chargés dynamiquement via `/api/v1/wfs/`)
-
-Source : **SANDRE** (services.sandre.eaufrance.fr)
-
-| Calque | Service WFS | Description | Zoom min |
-|---|---|---|---|
-| Régions hydrographiques | `geo/zonage` / `RegionHydro` | 6 grandes régions hydro françaises | 0 |
-| Secteurs hydrographiques | `geo/zonage` / `SecteurHydro` | Subdivisions des régions hydro | 6 |
-| Sous-secteurs | `geo/zonage` / `SousSecteurHydro` | Subdivisions des secteurs | 7 |
-| Zones hydrographiques | `geo/zonage` / `ZoneHydro` | Plus fin découpage SANDRE | 9 |
-| Cours d'eau principaux | `geo/zonage` / `CoursEau1` | Cours d'eau > 100 km (lignes) | 6 |
-| Cours d'eau secondaires | `geo/zonage` / `CoursEau2` | Cours d'eau 50–100 km (lignes) | 8 |
-| Plans d'eau | `geo/zonage` / `PlanEau_FXX` | Lacs, retenues (polygones) | 8 |
-| Masses d'eau rivières (DCE) | `MasseDEau_VRAP2022` / `MasseDEauRiviere_VRAP2022_FXX` | Directive Cadre sur l'Eau | 8 |
-
-Cache : 24h Redis, pré-chauffé au démarrage du backend.
-
-#### Calques Statiques (GeoJSON dans `public/geo/`)
-
-| Fichier | Description | Taille |
-|---|---|---|
-| `regions.geojson` | Limites administratives régionales | ~200 KB |
-| `departments.geojson` | Limites départementales | ~1.5 MB |
-| `bassins.geojson` | Districts hydrographiques SANDRE (A, B1, C, D, E, F, G, H) | ~500 KB |
-| `her.geojson` | Hydroécorégions de niveau 2 (HER-2) | ~2 MB |
-| `bdlisa.geojson` | Entités hydrogéologiques BDLISA | ~4.7 MB |
-
-#### Fond de Carte
-
-- **Voyager Light** (CartoDB) — basemap vectoriel clair, URL : `https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json`
-- **Relief (hillshading)** — surcouche calculée à la volée par MapLibre GL depuis les tuiles d'élévation AWS Terrain Tiles (encodage terrarium). URL : `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png`. Pas de téléchargement local, streamé en temps réel. Source de type `raster-dem` avec couche `hillshade` (exaggeration: 0.15, opacité: 0.15)
+La carte utilise l'API impérative MapLibre GL (`map.addLayer()`, `map.moveLayer()`) plutôt qu'un wrapper React déclaratif. Raisons :
+- Contrôle fin de l'ordre des couches
+- Performance sur les interactions (survol, clic)
+- Gestion précise des clusters et de la symbologie dynamique

@@ -1,4 +1,4 @@
-# Référence API — Hydro Dashboard
+# Référence API — Observatoire Hydrologique France
 
 Version de l'API : **v1**
 Préfixe de base : `/api/v1`
@@ -81,6 +81,41 @@ En cas d'échec DB, retourne `503` avec `{"detail": "Database unavailable"}`.
 
 ---
 
+## Système de Classification
+
+La classification est calculée à partir d'**indices de sécheresse standardisés** (et non de percentiles bruts) :
+
+- **SPLI (IPS)** pour les stations piézométriques — Standardized Piezometric Level Index (méthodologie BRGM RP-64147-FR, estimation KDE par mois calendaire)
+- **SSFI** pour les stations hydrométriques — Standardized Streamflow Index (distribution gamma par mois calendaire)
+
+Les indices sont convertis en 7 classes selon les seuils Météo-France :
+
+| Classe | Seuil (σ) | Description |
+|---|---|---|
+| `EXTREMEMENT_BAS` | < -1.75 | Situation exceptionnellement basse |
+| `TRES_BAS` | -1.75 à -1.28 | Nettement en dessous de la normale |
+| `BAS` | -1.28 à -0.84 | Modérément en dessous de la normale |
+| `NORMAL` | -0.84 à 0.84 | Plage de variation habituelle |
+| `HAUT` | 0.84 à 1.28 | Modérément au-dessus de la normale |
+| `TRES_HAUT` | 1.28 à 1.75 | Nettement au-dessus de la normale |
+| `EXTREMEMENT_HAUT` | > 1.75 | Situation exceptionnellement haute |
+
+Le calcul est effectué en batch au démarrage du backend et mis en cache Redis (24h).
+
+### Fiabilité
+
+Chaque station se voit attribuer un niveau de fiabilité basé sur la profondeur historique :
+
+| Niveau | Critère |
+|---|---|
+| `fiable` | >= 10 années distinctes avec >= 6 mois de données chacune |
+| `indicatif` | 5 à 9 années |
+| `insuffisant` | < 5 années |
+
+La fiabilité est incluse dans les réponses GeoJSON et les listes de stations.
+
+---
+
 ## Stations
 
 ### GET /api/v1/stations/piezo
@@ -94,7 +129,7 @@ Cache Redis : **1 heure**.
 |---|---|---|---|
 | `min_observations` | integer | — | Filtre `nb_mesures_total >= valeur` |
 | `last_measurement_after` | date (YYYY-MM-DD) | — | Filtre `derniere_mesure >= valeur` |
-| `classification` | string[] | — | Un ou plusieurs parmi `TRES_BAS`, `BAS`, `NORMAL`, `HAUT`, `TRES_HAUT` (répétable) |
+| `classification` | string[] | — | Un ou plusieurs parmi les 7 classes (répétable) |
 | `code_departement` | string (1–3 chars) | — | Code INSEE du département |
 | `bbox` | string | — | Emprise géographique : `min_lon,min_lat,max_lon,max_lat` |
 | `search` | string (2–100 chars) | — | Recherche ILIKE sur `code_bss` ou `nom_commune` |
@@ -118,23 +153,17 @@ Cache Redis : **1 heure**.
     "classification_derniere_annee": "NORMAL",
     "niveau_derniere_annee": 32.5,
     "tendance_classification": "STABLE",
-    "codes_bdlisa": "117AA01"
+    "codes_bdlisa": "117AA01",
+    "fiabilite": "fiable"
   }
 ]
-```
-
-**En-têtes de réponse :**
-
-```
-X-Total-Count: 4250
 ```
 
 ---
 
 ### GET /api/v1/stations/hydro
 
-Liste paginée des stations hydrométriques. Paramètres identiques aux stations piézo avec un paramètre supplémentaire.
-Cache Redis : **1 heure**.
+Liste paginée des stations hydrométriques. Cache Redis : **1 heure**.
 
 **Paramètres de requête :**
 
@@ -142,9 +171,9 @@ Cache Redis : **1 heure**.
 |---|---|---|---|
 | `min_observations` | integer | — | Filtre `nb_jours_total >= valeur` |
 | `last_measurement_after` | date (YYYY-MM-DD) | — | Filtre `derniere_mesure >= valeur` |
-| `classification` | string[] | — | Classification (voir ci-dessus) |
+| `classification` | string[] | — | Classification (7 classes, répétable) |
 | `code_departement` | string (1–3 chars) | — | Code INSEE département |
-| `grandeur_hydro` | string | — | Filtre sur `grandeur_hydro_principale` (`Q` = débit, `H` = hauteur) |
+| `grandeur_hydro` | string | — | `Q` (débit) ou `H` (hauteur) |
 | `bbox` | string | — | Emprise géographique |
 | `search` | string (2–100 chars) | — | ILIKE sur `code_station`, `libelle_station` ou `nom_cours_eau` |
 | `limit` | integer | `500` | 1–5000 |
@@ -160,7 +189,7 @@ Cache Redis : **1 heure**.
     "libelle_station": "La Loire à Orléans",
     "libelle_site": "La Loire à Orléans",
     "code_cours_eau": "K---0100",
-    "libelle_cours_eau": "La Loire",
+    "nom_cours_eau": "La Loire",
     "latitude_station": 47.902,
     "longitude_station": 1.909,
     "code_departement": "45",
@@ -168,7 +197,8 @@ Cache Redis : **1 heure**.
     "grandeur_hydro_principale": "Q",
     "nb_jours_total": 18000,
     "derniere_mesure": "2024-12-31",
-    "classification_resultat_dern_annee": "HAUT"
+    "classification_resultat_dern_annee": "HAUT",
+    "fiabilite": "fiable"
   }
 ]
 ```
@@ -177,7 +207,7 @@ Cache Redis : **1 heure**.
 
 ### GET /api/v1/stations/geojson
 
-Retourne un GeoJSON FeatureCollection pour l'affichage sur carte.
+GeoJSON FeatureCollection pour l'affichage sur carte. Inclut la classification calculée (indices standardisés) et la fiabilité.
 Cache Redis : **1 heure**.
 
 **Paramètres de requête :**
@@ -202,29 +232,28 @@ Cache Redis : **1 heure**.
         "code": "BSS001ABCD",
         "type": "piezo",
         "classification": "NORMAL",
+        "fiabilite": "fiable",
         "commune": "Paris",
         "departement": "Paris",
-        "code_departement": "75"
+        "code_departement": "75",
+        "derniere_mesure": "2024-12-31",
+        "nb_observations": 12500,
+        "tendance": "STABLE",
+        "codes_bdlisa": "117AA01"
       }
     }
   ]
 }
 ```
 
+La propriété `classification` reflète l'indice standardisé calculé (SPLI ou SSFI), pas le champ brut de la base de données. Si le cache Redis est indisponible, le fallback utilise la classification percentile de la DB (5 classes).
+
 ---
 
 ### GET /api/v1/stations/piezo/{code_bss}
 
-Retourne le détail complet d'une station piézométrique (50+ champs BSS).
+Détail complet d'une station piézométrique (50+ champs BSS).
 Cache Redis : **1 heure**.
-
-**Paramètres de chemin :**
-
-| Nom | Type | Description |
-|---|---|---|
-| `code_bss` | string | Code BSS de la station (ex: `BSS001ABCD`) |
-
-**Réponse 200 :** Objet complet `PiezoStationDetail` avec tous les champs de `gold.dim_piezo_stations`.
 
 **Réponse 404 :**
 
@@ -236,16 +265,8 @@ Cache Redis : **1 heure**.
 
 ### GET /api/v1/stations/hydro/{code_station}
 
-Retourne le détail complet d'une station hydrométrique.
+Détail complet d'une station hydrométrique.
 Cache Redis : **1 heure**.
-
-**Paramètres de chemin :**
-
-| Nom | Type | Description |
-|---|---|---|
-| `code_station` | string | Code station Hub'Eau (ex: `K123456001`) |
-
-**Réponse 200 :** Objet `HydroStationDetail` avec tous les champs de `gold.dim_hydro_stations`.
 
 **Réponse 404 :**
 
@@ -257,59 +278,31 @@ Cache Redis : **1 heure**.
 
 ### GET /api/v1/stations/piezo/{code_bss}/percentiles
 
-Calcule les percentiles historiques P10/P25/P75/P90 du niveau de la nappe pour une station piézométrique, sur l'ensemble des mesures journalières disponibles.
-Cache Redis : **24 heures**.
-
-**Paramètres de chemin :**
-
-| Nom | Type | Description |
-|---|---|---|
-| `code_bss` | string | Code BSS de la station |
-
-**Réponse 200 :**
-
-```json
-{
-  "p10": 28.4,
-  "p25": 31.2,
-  "p75": 36.8,
-  "p90": 39.5
-}
-```
-
-Les valeurs sont en mètres NGF (Nivellement Général de la France).
-
-**Réponse 404 :**
-
-```json
-{"detail": "No data for piezo station BSS001ABCD"}
-```
+Percentiles historiques P10/P25/P75/P90 du niveau piézométrique.
+Cache Redis : **24 heures**. Valeurs en mètres NGF.
 
 ---
 
 ### GET /api/v1/stations/hydro/{code_station}/percentiles
 
-Calcule les percentiles historiques P10/P25/P75/P90 du débit ou de la hauteur pour une station hydrométrique.
-Cache Redis : **24 heures**.
+Percentiles historiques P10/P25/P75/P90 du débit ou de la hauteur.
+Cache Redis : **24 heures**. Unités : m³/s (Q) ou m (H).
 
-**Paramètres de chemin :**
+---
 
-| Nom | Type | Description |
-|---|---|---|
-| `code_station` | string | Code station hydrométrique |
+### GET /api/v1/stations/piezo/{code_bss}/siblings
 
-**Réponse 200 :**
+Stations piézométriques du même aquifère BDLISA.
+Cache Redis : **1 heure**.
 
-```json
-{
-  "p10": 12.5,
-  "p25": 45.0,
-  "p75": 210.0,
-  "p90": 580.0
-}
-```
+**Réponse 200 :** Liste de stations résumées (code, commune, classification, dernière mesure).
 
-Les unités dépendent de la `grandeur_hydro_principale` de la station : m³/s pour le débit (Q), mètres pour la hauteur (H).
+---
+
+### GET /api/v1/stations/hydro/{code_station}/siblings
+
+Stations hydrométriques du même site hydrométrique.
+Cache Redis : **1 heure**.
 
 ---
 
@@ -317,14 +310,8 @@ Les unités dépendent de la `grandeur_hydro_principale` de la station : m³/s p
 
 ### GET /api/v1/timeseries/piezo/{code_bss}/daily
 
-Mesures journalières d'une station piézométrique, enrichies de données ERA5.
+Mesures journalières piézométriques, enrichies de données ERA5.
 Cache Redis : **6 heures**.
-
-**Paramètres de chemin :**
-
-| Nom | Type | Description |
-|---|---|---|
-| `code_bss` | string | Code BSS de la station |
 
 **Paramètres de requête :**
 
@@ -332,7 +319,7 @@ Cache Redis : **6 heures**.
 |---|---|---|---|
 | `start_date` | date (YYYY-MM-DD) | — | Date de début (incluse) |
 | `end_date` | date (YYYY-MM-DD) | — | Date de fin (incluse) |
-| `limit` | integer | `3650` | Nombre maximum de lignes (1–36500) |
+| `limit` | integer | `3650` | 1–36500 |
 
 **Réponse 200 :**
 
@@ -361,195 +348,89 @@ Cache Redis : **6 heures**.
 
 ### GET /api/v1/timeseries/hydro/{code_station}/daily
 
-Mesures journalières d'une station hydrométrique, enrichies de données ERA5.
-Cache Redis : **6 heures**.
-
-**Paramètres identiques à la route piézo daily.**
-
-**Réponse 200 :**
-
-```json
-[
-  {
-    "date": "2024-01-15",
-    "resultat_obs_elab": 245.5,
-    "grandeur_hydro_elab": "Q",
-    "temperature_2m": 8.3,
-    "total_precipitation": 0.005,
-    "potential_evaporation": 0.0012
-  }
-]
-```
+Mesures journalières hydrométriques + ERA5. Cache Redis : **6 heures**. Paramètres identiques.
 
 ---
 
 ### GET /api/v1/timeseries/piezo/{code_bss}/monthly
 
-Agrégats mensuels piézométriques avec moyennes mobiles 3 mois et 12 mois.
+Agrégats mensuels piézométriques avec moyennes mobiles 3 et 12 mois.
 Cache Redis : **12 heures**.
-
-**Paramètres de requête :**
-
-| Nom | Type | Défaut | Description |
-|---|---|---|---|
-| `start_date` | date | — | Filtre `mois >= valeur` |
-| `end_date` | date | — | Filtre `mois <= valeur` |
-| `limit` | integer | `600` | 1–1200 |
-
-**Réponse 200 :**
-
-```json
-[
-  {
-    "mois": "2024-01-01",
-    "niveau_moyen": 34.12,
-    "niveau_min": 33.80,
-    "niveau_max": 34.50,
-    "amplitude_mensuelle": 0.70,
-    "temperature_moyenne": 6.8,
-    "precipitation_totale": 0.065,
-    "evaporation_moyenne": 0.0009,
-    "nb_jours_mesures": 31,
-    "niveau_moy_mobile_3m": 34.05,
-    "niveau_moy_mobile_12m": 33.90,
-    "precipitation_moy_mobile_12m": 0.054,
-    "variation_niveau_vs_mois_prec": 0.15,
-    "variation_niveau_vs_annee_prec": -0.22
-  }
-]
-```
 
 ---
 
 ### GET /api/v1/timeseries/hydro/{code_station}/monthly
 
-Agrégats mensuels hydrométriques avec moyennes mobiles.
-Cache Redis : **12 heures**. Paramètres identiques à la route piézo monthly.
-
-**Réponse 200 :**
-
-```json
-[
-  {
-    "mois": "2024-01-01",
-    "resultat_moyen": 245.0,
-    "resultat_min": 180.0,
-    "resultat_max": 420.0,
-    "amplitude_mensuelle": 240.0,
-    "temperature_moyenne": 6.8,
-    "precipitation_totale": 0.065,
-    "evaporation_moyenne": 0.0009,
-    "nb_jours_mesures": 31,
-    "resultat_moy_mobile_3m": 260.0,
-    "resultat_moy_mobile_12m": 200.0,
-    "precipitation_moy_mobile_12m": 0.054,
-    "variation_resultat_vs_mois_prec": 15.0,
-    "variation_resultat_vs_annee_prec": -30.0
-  }
-]
-```
+Agrégats mensuels hydrométriques. Cache Redis : **12 heures**.
 
 ---
 
 ### GET /api/v1/timeseries/piezo/{code_bss}/yearly
 
-Statistiques annuelles piézométriques incluant le rang percentile historique et la classification.
+Statistiques annuelles piézométriques (percentile historique, classification annuelle).
 Cache Redis : **24 heures**.
-
-**Paramètres de requête :**
-
-| Nom | Type | Défaut | Description |
-|---|---|---|---|
-| `start_date` | date | — | Filtre `annee >= année(valeur)` |
-| `end_date` | date | — | Filtre `annee <= année(valeur)` |
-| `limit` | integer | `100` | 1–200 |
-
-**Réponse 200 :**
-
-```json
-[
-  {
-    "annee": 2023,
-    "niveau_moyen_annuel": 33.85,
-    "niveau_min_annuel": 31.20,
-    "niveau_max_annuel": 36.90,
-    "amplitude_annuelle": 5.70,
-    "temperature_moyenne_annuelle": 13.2,
-    "precipitation_totale_annuelle": 0.685,
-    "bilan_hydrique_annuel": 0.245,
-    "nb_jours_mesures_annuel": 365,
-    "percentile_niveau_historique": 42.5,
-    "classification_niveau_annuel": "NORMAL",
-    "niveau_moy_mobile_5ans": 34.10
-  }
-]
-```
 
 ---
 
 ### GET /api/v1/timeseries/hydro/{code_station}/yearly
 
-Statistiques annuelles hydrométriques.
-Cache Redis : **24 heures**. Paramètres identiques.
-
-**Réponse 200 :**
-
-```json
-[
-  {
-    "annee": 2023,
-    "resultat_moyen_annuel": 198.5,
-    "resultat_min_annuel": 45.0,
-    "resultat_max_annuel": 1250.0,
-    "amplitude_annuelle": 1205.0,
-    "temperature_moyenne_annuelle": 13.2,
-    "precipitation_totale_annuelle": 0.685,
-    "nb_jours_mesures_annuel": 365,
-    "percentile_resultat_historique": 38.0,
-    "classification_resultat_annuel": "NORMAL"
-  }
-]
-```
+Statistiques annuelles hydrométriques. Cache Redis : **24 heures**.
 
 ---
 
 ### GET /api/v1/timeseries/compare
 
-Récupère simultanément (en parallèle via `asyncio.gather`) les séries temporelles de plusieurs stations.
+Séries temporelles multi-stations en parallèle (`asyncio.gather`).
 Cache Redis : **30 minutes**.
 
 **Paramètres de requête :**
 
 | Nom | Type | Défaut | Description |
 |---|---|---|---|
-| `stations` | string[] | *obligatoire* | Codes des stations (param répétable, 1–10 stations) |
+| `stations` | string[] | *obligatoire* | Codes des stations (1–10, répétable) |
 | `type` | string | *obligatoire* | `piezo` ou `hydro` |
 | `granularity` | string | `monthly` | `daily` ou `monthly` |
 
-**Exemple de requête :**
+---
 
-```
-GET /api/v1/timeseries/compare?stations=BSS001ABCD&stations=BSS002EFGH&type=piezo&granularity=monthly
-```
+## Indices de Sécheresse
+
+### GET /api/v1/piezo/{code_bss}/spli
+
+Série temporelle mensuelle de l'indice SPLI (IPS) — Standardized Piezometric Level Index.
+Cache Redis : **12 heures**.
 
 **Réponse 200 :**
 
 ```json
-{
-  "BSS001ABCD": [
-    {"mois": "2024-01-01", "niveau_moyen": 34.12, "niveau_min": 33.80, "niveau_max": 34.50}
-  ],
-  "BSS002EFGH": [
-    {"mois": "2024-01-01", "niveau_moyen": 28.50, "niveau_min": 28.10, "niveau_max": 28.90}
-  ]
-}
+[
+  {
+    "mois": "2024-01-01",
+    "valeur": -1.42
+  }
+]
 ```
 
-**Réponse 400 :**
+---
 
-```json
-{"detail": "Provide between 1 and 10 station codes"}
-```
+### GET /api/v1/piezo/{code_bss}/spi
+
+Série temporelle mensuelle du SPI (Standardized Precipitation Index) pour la station piézo.
+Cache Redis : **12 heures**.
+
+---
+
+### GET /api/v1/hydro/{code_station}/ssfi
+
+Série temporelle mensuelle de l'indice SSFI — Standardized Streamflow Index.
+Cache Redis : **12 heures**.
+
+---
+
+### GET /api/v1/hydro/{code_station}/spi
+
+Série temporelle mensuelle du SPI pour la station hydro.
+Cache Redis : **12 heures**.
 
 ---
 
@@ -567,61 +448,16 @@ Cache Redis : **12 heures**.
 | `saison` | string | — | `annuel`, `printemps`, `ete`, `automne` ou `hiver` |
 | `code_departement` | string | — | Code département (1–3 chars) |
 | `classification_tendance` | string | — | `HAUSSE_FORTE`, `HAUSSE_SIGNIFICATIVE`, `STABLE`, `BAISSE_SIGNIFICATIVE` ou `BAISSE_FORTE` |
-| `fiabilite_min` | float | — | Fiabilité minimum de la tendance (0.0–1.0) |
+| `fiabilite_min` | float | — | Fiabilité minimum (0.0–1.0) |
 | `limit` | integer | `500` | 1–5000 |
 | `offset` | integer | `0` | Décalage |
-
-**Réponse 200 :**
-
-```json
-[
-  {
-    "code_bss": "BSS001ABCD",
-    "saison": "annuel",
-    "code_departement": "75",
-    "nom_departement": "Paris",
-    "variation_annuelle_m": -0.042,
-    "fiabilite_tendance": 0.95,
-    "nb_points": 8760,
-    "classification_tendance": "BAISSE_SIGNIFICATIVE",
-    "projection_variation_5ans_m": -0.210
-  }
-]
-```
-
-**En-têtes de réponse :** `X-Total-Count: <n>`
 
 ---
 
 ### GET /api/v1/trends/hydro
 
 Tendances de pente de Sen pour les stations hydrométriques.
-Cache Redis : **12 heures**.
-
-**Paramètres supplémentaires par rapport à `/trends/piezo` :**
-
-| Nom | Type | Défaut | Description |
-|---|---|---|---|
-| `grandeur_hydro_elab` | string | — | Filtre sur la grandeur élaborée (`Q` ou `H`) |
-
-**Réponse 200 :**
-
-```json
-[
-  {
-    "code_station": "K123456001",
-    "grandeur_hydro_elab": "Q",
-    "saison": "ete",
-    "code_departement": "45",
-    "nom_departement": "Loiret",
-    "variation_annuelle": -3.5,
-    "fiabilite_tendance": 0.88,
-    "nb_points": 15000,
-    "classification_tendance": "BAISSE_SIGNIFICATIVE",
-    "projection_variation_5ans": -17.5
-  }
-]
-```
+Cache Redis : **12 heures**. Paramètre supplémentaire : `grandeur_hydro_elab` (`Q` ou `H`).
 
 ---
 
@@ -629,143 +465,47 @@ Cache Redis : **12 heures**.
 
 ### GET /api/v1/stats/national
 
-Statistiques nationales agrégées : nombre total de stations par type et par classification.
-Cache Redis : **6 heures**.
-
-**Paramètres :** aucun
-
-**Réponse 200 :**
-
-```json
-{
-  "total_piezo": 4250,
-  "piezo_tres_bas": 320,
-  "piezo_bas": 580,
-  "piezo_normal": 2100,
-  "piezo_haut": 850,
-  "piezo_tres_haut": 400,
-  "piezo_no_class": 0,
-  "total_hydro": 1800,
-  "hydro_tres_bas": 150,
-  "hydro_bas": 280,
-  "hydro_normal": 980,
-  "hydro_haut": 250,
-  "hydro_tres_haut": 140
-}
-```
+Statistiques nationales agrégées par type et classification. Cache Redis : **6 heures**.
 
 ---
 
 ### GET /api/v1/stats/departments
 
-Statistiques par département : nombre de stations, pourcentage en TRES_BAS, variation moyenne.
-Cache Redis : **6 heures**.
+Statistiques par département. Cache Redis : **6 heures**.
 
-**Paramètres :** aucun
+---
+
+## Classifications Timeline
+
+### GET /api/v1/common/classifications/timeline
+
+Historique mensuel des classifications pour toutes les stations. Utilisé par le composant Timeline.
+Cache Redis : **24 heures**.
 
 **Réponse 200 :**
 
 ```json
-[
-  {
-    "code_departement": "01",
-    "nom_departement": "Ain",
-    "nb_piezo": 45,
-    "nb_hydro": 18,
-    "pct_tres_bas": 12.5,
-    "avg_variation": -0.028
+{
+  "periods": ["2005-01", "2005-02", "...", "2026-02"],
+  "stations": {
+    "BSS001ABCD": [3, 3, 4, 3, 7, ...],
+    "K123456001": [2, 3, 3, 4, 7, ...]
   }
-]
+}
 ```
 
----
+Les valeurs numériques correspondent aux classes :
 
-## Données ERA5
-
-### GET /api/v1/era5/grid
-
-Liste des points de grille ERA5 disponibles.
-Cache Redis : **24 heures**.
-
-**Paramètres :** aucun
-
-**Réponse 200 :**
-
-```json
-[
-  {"era5_latitude": 41.25, "era5_longitude": -5.25},
-  {"era5_latitude": 41.25, "era5_longitude": -4.50}
-]
-```
-
----
-
-### GET /api/v1/era5/snapshot
-
-Snapshot des données ERA5 pour une date précise (température, précipitations, évaporation par point de grille).
-Cache Redis : **24 heures**.
-
-**Paramètres de requête :**
-
-| Nom | Type | Défaut | Description |
-|---|---|---|---|
-| `date` | date (YYYY-MM-DD) | *obligatoire* | Date du snapshot |
-
-**Réponse 200 :**
-
-```json
-[
-  {
-    "latitude": 48.75,
-    "longitude": 2.25,
-    "temperature_2m": 9.5,
-    "total_precipitation": 0.003,
-    "potential_evaporation": 0.0008
-  }
-]
-```
-
----
-
-### GET /api/v1/era5/dates
-
-Liste des mois disponibles dans les données ERA5.
-Cache Redis : **24 heures**.
-
-**Paramètres :** aucun
-
-**Réponse 200 :**
-
-```json
-["2010-01-01", "2010-02-01", "2010-03-01", "...", "2024-12-01"]
-```
-
----
-
-### GET /api/v1/era5/monthly
-
-Agrégats ERA5 mensuels (moyenne de température, cumul précipitations, moyenne évaporation) par point de grille.
-Cache Redis : **24 heures**.
-
-**Paramètres de requête :**
-
-| Nom | Type | Défaut | Description |
-|---|---|---|---|
-| `month` | date (YYYY-MM-DD) | *obligatoire* | Premier jour du mois demandé |
-
-**Réponse 200 :**
-
-```json
-[
-  {
-    "latitude": 48.75,
-    "longitude": 2.25,
-    "temperature_2m": 8.3,
-    "total_precipitation": 0.065,
-    "potential_evaporation": 0.021
-  }
-]
-```
+| Index | Classification |
+|---|---|
+| 0 | EXTREMEMENT_BAS |
+| 1 | TRES_BAS |
+| 2 | BAS |
+| 3 | NORMAL |
+| 4 | HAUT |
+| 5 | TRES_HAUT |
+| 6 | EXTREMEMENT_HAUT |
+| 7 | UNKNOWN (pas de données) |
 
 ---
 
@@ -773,23 +513,17 @@ Cache Redis : **24 heures**.
 
 ### GET /api/v1/common/alerts
 
-Liste des stations actives (mesures < 90 jours) en situation anormale, avec historique de durée consécutive.
+Stations actives (mesures < 90 jours) en situation anormale, avec historique de durée consécutive.
 Cache Redis : **1 heure**.
 
 **Paramètres de requête :**
 
 | Nom | Type | Défaut | Description |
 |---|---|---|---|
-| `severity` | string[] | `["TRES_BAS","TRES_HAUT"]` | Classifications à inclure (répétable) : `TRES_BAS`, `BAS`, `HAUT`, `TRES_HAUT` |
-| `type` | string | — | `piezo` ou `hydro` (sans filtre = les deux types) |
+| `severity` | string[] | `["TRES_BAS","TRES_HAUT"]` | Classifications à inclure (répétable) |
+| `type` | string | — | `piezo` ou `hydro` |
 | `code_departement` | string (1–3 chars) | — | Filtre par département |
-| `active_only` | boolean | `true` | Ne retourner que les stations avec des mesures récentes (< 90 jours) |
-
-**Exemple :**
-
-```
-GET /api/v1/common/alerts?severity=TRES_BAS&severity=BAS&severity=HAUT&severity=TRES_HAUT
-```
+| `active_only` | boolean | `true` | Stations avec mesures récentes uniquement |
 
 **Réponse 200 :**
 
@@ -804,6 +538,7 @@ GET /api/v1/common/alerts?severity=TRES_BAS&severity=BAS&severity=HAUT&severity=
     "code_departement": "34",
     "departement": "Hérault",
     "classification": "TRES_BAS",
+    "fiabilite": "fiable",
     "derniere_mesure": "2026-02-15",
     "alerte_depuis_annee": 2024,
     "nb_annees_consecutives": 3
@@ -811,7 +546,33 @@ GET /api/v1/common/alerts?severity=TRES_BAS&severity=BAS&severity=HAUT&severity=
 ]
 ```
 
-Les champs `alerte_depuis_annee` et `nb_annees_consecutives` sont calculés en remontant les classifications annuelles consécutives dans `fct_yearly_stats`/`fct_yearly_hydro`.
+---
+
+## Données ERA5
+
+### GET /api/v1/era5/grid
+
+Points de grille ERA5 disponibles. Cache Redis : **24 heures**.
+
+### GET /api/v1/era5/snapshot
+
+Snapshot ERA5 pour une date précise. Cache Redis : **24 heures**.
+
+| Nom | Type | Défaut | Description |
+|---|---|---|---|
+| `date` | date (YYYY-MM-DD) | *obligatoire* | Date du snapshot |
+
+### GET /api/v1/era5/dates
+
+Mois disponibles dans les données ERA5. Cache Redis : **24 heures**.
+
+### GET /api/v1/era5/monthly
+
+Agrégats ERA5 mensuels par point de grille. Cache Redis : **24 heures**.
+
+| Nom | Type | Défaut | Description |
+|---|---|---|---|
+| `month` | date (YYYY-MM-DD) | *obligatoire* | Premier jour du mois |
 
 ---
 
@@ -839,23 +600,26 @@ Cache Redis : **24 heures**, pré-chauffé au démarrage du backend.
 
 | Nom | Type | Défaut | Description |
 |---|---|---|---|
-| `bbox` | string | — | Bounding box `minLon,minLat,maxLon,maxLat` (optionnel) |
-
-**Réponse 200 :** GeoJSON FeatureCollection (Content-Encoding: gzip)
+| `bbox` | string | — | Bounding box `minLon,minLat,maxLon,maxLat` |
 
 ---
 
-## Système de Classification
+## BDLISA (entités hydrogéologiques)
 
-La classification est calculée en comparant la valeur annuelle de chaque station à son historique complet via la fonction PostgreSQL `PERCENTILE_CONT`.
+### GET /api/v1/bdlisa/{code}
 
-| Valeur | Centile | Description |
+Retourne les données GeoJSON d'une entité BDLISA par son code.
+Servies directement depuis des fichiers JSON statiques (`backend/data/bdlisa/`). Pas de cache Redis.
+
+**Paramètres de chemin :**
+
+| Nom | Type | Description |
 |---|---|---|
-| `TRES_BAS` | < P10 | Niveau exceptionnellement bas sur l'historique |
-| `BAS` | P10 – P25 | Niveau en dessous de la normale |
-| `NORMAL` | P25 – P75 | Niveau dans la plage saisonnière habituelle |
-| `HAUT` | P75 – P90 | Niveau au-dessus de la normale |
-| `TRES_HAUT` | > P90 | Niveau exceptionnellement haut sur l'historique |
+| `code` | string | Code de l'entité BDLISA (ex: `117AA01`) |
+
+**Réponse 200 :** GeoJSON Feature avec la géométrie de l'entité.
+
+**Réponse 404 :** Entité non trouvée.
 
 ---
 
@@ -867,4 +631,4 @@ Les endpoints retournant des listes supportent `limit` et `offset` :
 GET /api/v1/stations/piezo?limit=100&offset=200
 ```
 
-Le nombre total d'enregistrements est disponible dans l'en-tête `X-Total-Count`. Le calcul du total utilise la fonction fenêtre PostgreSQL `COUNT(*) OVER()` pour éviter une double requête.
+Le nombre total d'enregistrements est disponible dans l'en-tête `X-Total-Count`. Le total utilise la fonction fenêtre PostgreSQL `COUNT(*) OVER()` pour éviter une double requête.
