@@ -130,36 +130,24 @@ function createSdfIcon(draw: (ctx: CanvasRenderingContext2D, size: number) => vo
   return ctx.getImageData(0, 0, size, size)
 }
 
-/** Piezo: filled circle with ring — borehole seen from above */
-function drawPiezoIcon(ctx: CanvasRenderingContext2D, size: number) {
+/** Piezo: filled circle */
+function drawPiezoCircle(ctx: CanvasRenderingContext2D, size: number) {
   const cx = size / 2, cy = size / 2
-  // Outer filled circle
   ctx.beginPath()
-  ctx.arc(cx, cy, size * 0.4, 0, Math.PI * 2)
-  ctx.fillStyle = '#fff'
-  ctx.fill()
-  // Inner ring cutout (transparent center)
-  ctx.globalCompositeOperation = 'destination-out'
-  ctx.beginPath()
-  ctx.arc(cx, cy, size * 0.2, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.globalCompositeOperation = 'source-over'
-  // Center dot
-  ctx.beginPath()
-  ctx.arc(cx, cy, size * 0.08, 0, Math.PI * 2)
+  ctx.arc(cx, cy, size * 0.38, 0, Math.PI * 2)
   ctx.fillStyle = '#fff'
   ctx.fill()
 }
 
-/** Hydro: diamond/lozenge — standard hydrometry symbol */
-function drawHydroIcon(ctx: CanvasRenderingContext2D, size: number) {
-  const cx = size / 2, cy = size / 2
-  const r = size * 0.38
+/** Hydro: water drop shape */
+function drawHydroDrop(ctx: CanvasRenderingContext2D, size: number) {
+  const cx = size / 2
+  const r = size * 0.32
+  const bottomY = size * 0.62
+  const tipY = size * 0.12
   ctx.beginPath()
-  ctx.moveTo(cx, cy - r)       // top
-  ctx.lineTo(cx + r, cy)       // right
-  ctx.lineTo(cx, cy + r)       // bottom
-  ctx.lineTo(cx - r, cy)       // left
+  ctx.arc(cx, bottomY, r, 0.15 * Math.PI, 0.85 * Math.PI)
+  ctx.lineTo(cx, tipY)
   ctx.closePath()
   ctx.fillStyle = '#fff'
   ctx.fill()
@@ -455,8 +443,8 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
       }
 
       // --- Register SDF marker icons ---
-      map.addImage('piezo-marker', createSdfIcon(drawPiezoIcon, 40), { sdf: true })
-      map.addImage('hydro-marker', createSdfIcon(drawHydroIcon, 40), { sdf: true })
+      map.addImage('piezo-marker', createSdfIcon(drawPiezoCircle, 40), { sdf: true })
+      map.addImage('hydro-marker', createSdfIcon(drawHydroDrop, 40), { sdf: true })
 
       // --- Two separate clustered sources ---
       addClusteredSource(map, 'piezo-stations', 'piezo', 'piezo-marker', CLUSTER_STYLE.piezo)
@@ -1132,16 +1120,12 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
         </div>
         <div className="border-t border-white/10 pt-1 mt-1 flex gap-3">
           <div className="flex items-center gap-1.5">
-            <svg width="12" height="12" viewBox="0 0 40 40" className="shrink-0">
-              <circle cx="20" cy="20" r="16" fill="#10b981" />
-              <circle cx="20" cy="20" r="8" fill="#111827" />
-              <circle cx="20" cy="20" r="3" fill="#10b981" />
-            </svg>
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: '#10b981' }} />
             <span className="text-gray-300">Piézo</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <svg width="12" height="12" viewBox="0 0 40 40" className="shrink-0">
-              <path d="M20,4 L36,20 L20,36 L4,20 Z" fill="#10b981" />
+            <svg width="12" height="14" viewBox="0 0 12 14" className="shrink-0">
+              <path d="M6,1 Q6,1 10,8 A4.5,4.5 0 1,1 2,8 Q6,1 6,1Z" fill="#10b981" />
             </svg>
             <span className="text-gray-300">Hydro</span>
           </div>
