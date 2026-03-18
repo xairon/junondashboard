@@ -118,44 +118,132 @@ function buildClassificationColorExpression(): maplibregl.ExpressionSpecificatio
 }
 
 /* ------------------------------------------------------------------ */
-/*  SDF icon generation for station markers                           */
+/*  SDF icon generation for station markers (BRGM-style pins)         */
 /* ------------------------------------------------------------------ */
 
 /** Create an SDF-compatible ImageData from a drawing function */
-function createSdfIcon(draw: (ctx: CanvasRenderingContext2D, size: number) => void, size = 40): ImageData {
+function createSdfIcon(draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void, w: number, h: number): ImageData {
   const canvas = document.createElement('canvas')
-  canvas.width = size
-  canvas.height = size
+  canvas.width = w
+  canvas.height = h
   const ctx = canvas.getContext('2d')!
-  draw(ctx, size)
-  return ctx.getImageData(0, 0, size, size)
+  draw(ctx, w, h)
+  return ctx.getImageData(0, 0, w, h)
 }
 
-/** Piezo: filled circle — clean, minimal marker for groundwater stations */
-function drawPiezoCircle(ctx: CanvasRenderingContext2D, size: number) {
-  const cx = size / 2, cy = size / 2
-  const r = size * 0.38
+/** Draw a pin/teardrop shape path — shared by piezo and hydro */
+function drawPinPath(ctx: CanvasRenderingContext2D, cx: number, topY: number, bottomY: number, r: number) {
   ctx.beginPath()
-  ctx.arc(cx, cy, r, 0, Math.PI * 2)
-  ctx.fillStyle = '#fff'
-  ctx.fill()
-}
-
-/** Hydro: water drop shape — represents surface water flow */
-function drawHydroDrop(ctx: CanvasRenderingContext2D, size: number) {
-  const cx = size / 2
-  const r = size * 0.32
-  const bottomY = size * 0.62
-  const tipY = size * 0.12
-
-  ctx.beginPath()
-  // Bottom circle
-  ctx.arc(cx, bottomY, r, 0.15 * Math.PI, 0.85 * Math.PI)
-  // Sides up to the tip
-  ctx.lineTo(cx, tipY)
+  ctx.moveTo(cx, bottomY)
+  // Left curve from tip up to circle
+  ctx.bezierCurveTo(cx, bottomY - r * 0.6, cx - r * 1.35, topY + r * 0.7, cx - r, topY)
+  // Top arc
+  ctx.arc(cx, topY, r, Math.PI, 0, false)
+  // Right curve from circle down to tip
+  ctx.bezierCurveTo(cx + r * 1.35, topY + r * 0.7, cx, bottomY - r * 0.6, cx, bottomY)
   ctx.closePath()
-  ctx.fillStyle = '#fff'
+}
+
+/**
+ * Piezo: pin with inner circle, piezometric tube + water table waves.
+ * All drawn in white for SDF recoloring.
+ */
+function drawPiezoPin(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  const cx = w / 2
+  const r = w * 0.35
+  const topY = h * 0.34
+  const bottomY = h * 0.92
+
+  // Pin shape
+  drawPinPath(ctx, cx, topY, bottomY, r)
+  ctx.fillStyle = '#ffffff'
   ctx.fill()
+
+  // Inner circle (slightly darker for depth via lower alpha)
+  const ir = r * 0.72
+  ctx.beginPath()
+  ctx.arc(cx, topY, ir, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(0,0,0,0.12)'
+  ctx.fill()
+
+  // Piezometric tube (vertical bar)
+  const tw = w * 0.08, th = h * 0.28
+  ctx.fillStyle = 'rgba(255,255,255,0.9)'
+  ctx.beginPath()
+  ctx.roundRect(cx - tw / 2, topY - th / 2, tw, th, tw / 2)
+  ctx.fill()
+
+  // Water table waves
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)'
+  ctx.lineWidth = w * 0.04
+  ctx.lineCap = 'round'
+  const wy = topY + r * 0.2
+  ctx.beginPath()
+  ctx.moveTo(cx - ir * 0.6, wy)
+  ctx.quadraticCurveTo(cx - ir * 0.3, wy - r * 0.2, cx, wy)
+  ctx.quadraticCurveTo(cx + ir * 0.3, wy + r * 0.2, cx + ir * 0.6, wy)
+  ctx.stroke()
+
+  // Second wave (lighter)
+  ctx.globalAlpha = 0.5
+  const wy2 = wy + r * 0.25
+  ctx.beginPath()
+  ctx.moveTo(cx - ir * 0.5, wy2)
+  ctx.quadraticCurveTo(cx - ir * 0.2, wy2 - r * 0.15, cx + ir * 0.1, wy2)
+  ctx.quadraticCurveTo(cx + ir * 0.35, wy2 + r * 0.15, cx + ir * 0.5, wy2)
+  ctx.stroke()
+  ctx.globalAlpha = 1.0
+}
+
+/**
+ * Hydro: pin with inner circle, river waves pattern.
+ * All drawn in white for SDF recoloring.
+ */
+function drawHydroPin(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  const cx = w / 2
+  const r = w * 0.35
+  const topY = h * 0.34
+  const bottomY = h * 0.92
+
+  // Pin shape
+  drawPinPath(ctx, cx, topY, bottomY, r)
+  ctx.fillStyle = '#ffffff'
+  ctx.fill()
+
+  // Inner circle
+  const ir = r * 0.72
+  ctx.beginPath()
+  ctx.arc(cx, topY, ir, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(0,0,0,0.12)'
+  ctx.fill()
+
+  // Three river waves
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)'
+  ctx.lineCap = 'round'
+
+  const waveWidth = ir * 0.7
+  const waves = [
+    { y: topY - r * 0.2, lw: w * 0.05, alpha: 0.9 },
+    { y: topY + r * 0.05, lw: w * 0.05, alpha: 0.9 },
+    { y: topY + r * 0.3, lw: w * 0.035, alpha: 0.45 },
+  ]
+
+  for (const wave of waves) {
+    ctx.globalAlpha = wave.alpha
+    ctx.lineWidth = wave.lw
+    ctx.beginPath()
+    ctx.moveTo(cx - waveWidth, wave.y)
+    ctx.quadraticCurveTo(cx - waveWidth * 0.5, wave.y - r * 0.18, cx, wave.y)
+    ctx.quadraticCurveTo(cx + waveWidth * 0.5, wave.y + r * 0.18, cx + waveWidth, wave.y)
+    ctx.stroke()
+  }
+  ctx.globalAlpha = 1.0
+
+  // Gauge mark at top
+  const gw = w * 0.04, gh = h * 0.08
+  ctx.fillStyle = 'rgba(255,255,255,0.7)'
+  ctx.fillRect(cx - gw / 2, topY - ir * 0.85, gw, gh)
+  ctx.fillRect(cx - gw * 1.5, topY - ir * 0.75, gw * 3, gw * 0.6)
 }
 
 /* ------------------------------------------------------------------ */
@@ -448,8 +536,8 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
       }
 
       // --- Register SDF marker icons ---
-      map.addImage('piezo-marker', createSdfIcon(drawPiezoCircle, 40), { sdf: true })
-      map.addImage('hydro-marker', createSdfIcon(drawHydroDrop, 40), { sdf: true })
+      map.addImage('piezo-marker', createSdfIcon(drawPiezoPin, 40, 52), { sdf: true })
+      map.addImage('hydro-marker', createSdfIcon(drawHydroPin, 40, 52), { sdf: true })
 
       // --- Two separate clustered sources ---
       addClusteredSource(map, 'piezo-stations', 'piezo', 'piezo-marker', CLUSTER_STYLE.piezo)
@@ -1125,12 +1213,19 @@ const activeCodeBassinRef = useRef(activeCodeBassin)
         </div>
         <div className="border-t border-white/10 pt-1 mt-1 flex gap-3">
           <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full shrink-0 border border-gray-500" style={{ backgroundColor: '#10b981' }} />
+            <svg width="10" height="14" viewBox="0 0 40 52" className="shrink-0">
+              <path d="M20,48 C20,48 4,36 4,18 A16,16 0 1 1 36,18 C36,36 20,48 20,48Z" fill="#10b981" stroke="#0a7c5a" strokeWidth="1.5"/>
+              <circle cx="20" cy="18" r="8" fill="rgba(255,255,255,0.9)"/>
+              <rect x="19" y="12" width="2.5" height="12" rx="1" fill="#10b981" opacity="0.8"/>
+            </svg>
             <span className="text-gray-300">Piézo</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <svg width="12" height="14" viewBox="0 0 12 14" className="shrink-0">
-              <path d="M6,1 Q6,1 10,8 A4.5,4.5 0 1,1 2,8 Q6,1 6,1Z" fill="#10b981" />
+            <svg width="10" height="14" viewBox="0 0 40 52" className="shrink-0">
+              <path d="M20,48 C20,48 4,36 4,18 A16,16 0 1 1 36,18 C36,36 20,48 20,48Z" fill="#10b981" stroke="#0a7c5a" strokeWidth="1.5"/>
+              <circle cx="20" cy="18" r="8" fill="rgba(255,255,255,0.9)"/>
+              <path d="M13,16 Q16.5,13.5 20,16 Q23.5,18.5 27,16" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round"/>
+              <path d="M13,20 Q16.5,17.5 20,20 Q23.5,22.5 27,20" fill="none" stroke="#10b981" strokeWidth="1.5" strokeLinecap="round" opacity="0.6"/>
             </svg>
             <span className="text-gray-300">Hydro</span>
           </div>
