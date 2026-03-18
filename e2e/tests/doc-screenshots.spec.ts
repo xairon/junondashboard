@@ -336,24 +336,45 @@ test('13 - toggle stations grises', async ({ page }) => {
   await page.click('button[aria-label="Ouvrir le panneau"]')
   await page.waitForTimeout(500)
 
-  // Screenshot with grey stations visible
-  await screenshot(page, '13-stations-grises-on')
+  // Grey stations are OFF by default — screenshot without them
+  await screenshot(page, '13-stations-grises-off')
 
-  // Toggle off
+  // Toggle ON
   const greyToggle = page.locator('label', { hasText: 'Stations filtrées' })
   if (await greyToggle.count() > 0) {
     await greyToggle.click()
-    await page.waitForTimeout(1500) // Wait for markers to disappear
+    await page.waitForTimeout(1500) // Wait for grey markers to appear
   }
 
-  await screenshot(page, '13-stations-grises-off')
+  await screenshot(page, '13-stations-grises-on')
 })
 
 // ─────────────────────────────────────────────
-//  14. ABOUT PAGE
+//  14. TOGGLE RELIEF
 // ─────────────────────────────────────────────
-test('14 - page a propos', async ({ page }) => {
+test('14 - toggle relief', async ({ page }) => {
+  await page.goto('/')
+  await waitForMap(page)
+
+  // Open drawer
+  await page.click('button[aria-label="Ouvrir le panneau"]')
+  await page.waitForTimeout(500)
+
+  // Relief is OFF by default — toggle ON
+  const reliefToggle = page.locator('label', { hasText: 'Relief' })
+  if (await reliefToggle.count() > 0) {
+    await reliefToggle.click()
+    await page.waitForTimeout(3000) // Wait for terrain tiles to load
+  }
+
+  await screenshot(page, '14-relief')
+})
+
+// ─────────────────────────────────────────────
+//  15. ABOUT PAGE
+// ─────────────────────────────────────────────
+test('15 - page a propos', async ({ page }) => {
   await page.goto('/about')
   await waitForPageData(page)
-  await screenshot(page, '14-about')
+  await screenshot(page, '15-about')
 })

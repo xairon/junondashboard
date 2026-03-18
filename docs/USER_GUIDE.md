@@ -100,7 +100,9 @@ La carte propose plusieurs niveaux d'information géographique superposables :
 
 ![Activation du calque cours d'eau](assets/12---calque-cours-d-eau.gif)
 
-**Relief :** Un ombrage de terrain discret (hillshading) est toujours affiché en arrière-plan pour donner une lecture topographique.
+**Relief (topographie) :** Un ombrage de terrain (hillshading) peut être activé via le toggle « Relief » dans la section Données du panneau de contrôle. Désactivé par défaut pour accélérer le chargement initial.
+
+![Activation du relief](assets/14---toggle-relief.gif)
 
 ### Interactions avec la carte
 
