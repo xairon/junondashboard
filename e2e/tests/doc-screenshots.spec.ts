@@ -156,44 +156,45 @@ test('05 - clic zone zoom', async ({ page }) => {
 //  06. FICHE STATION — Navigate to station via search (GIF)
 // ─────────────────────────────────────────────
 test('06 - fiche station', async ({ page }) => {
-  // Get a station with coordinates from the GeoJSON API to navigate directly
-  let lon = 2.35, lat = 48.85 // fallback: Paris
-  let stationCode = ''
+  // Find a dense area with multiple nearby stations for reliable clicking
+  let lon = 2.35, lat = 48.85 // Paris area — lots of stations
   try {
     const response = await page.request.get('/api/v1/common/stations/geojson')
     const data = await response.json()
     if (data?.features?.length > 0) {
-      // Pick a station near center of France for a good screenshot
-      const feat = data.features.find((f: any) =>
-        f.geometry.coordinates[0] > 1 && f.geometry.coordinates[0] < 4 &&
-        f.geometry.coordinates[1] > 45 && f.geometry.coordinates[1] < 48 &&
+      // Find a cluster of stations: pick a station that has neighbors within 0.05°
+      const feats = data.features.filter((f: any) =>
         f.properties.classification && f.properties.classification !== 'UNKNOWN'
-      ) || data.features[0]
-      lon = feat.geometry.coordinates[0]
-      lat = feat.geometry.coordinates[1]
-      stationCode = feat.properties.code
+      )
+      for (const f of feats) {
+        const [flon, flat] = f.geometry.coordinates
+        const nearby = feats.filter((g: any) => {
+          const [glon, glat] = g.geometry.coordinates
+          return Math.abs(glon - flon) < 0.05 && Math.abs(glat - flat) < 0.05 && g !== f
+        })
+        if (nearby.length >= 3) {
+          lon = flon; lat = flat; break
+        }
+      }
     }
   } catch { /* use fallback */ }
 
-  // Navigate to map centered on that station (zoomed in so markers are unclustered)
-  await page.goto(`/?lat=${lat}&lon=${lon}&zoom=12`)
+  // Navigate zoomed very tight on the station — delta 0.01 ≈ zoom 14-15
+  await page.goto(`/?lat=${lat}&lon=${lon}&zoom=14`)
   await waitForMap(page)
+  // Extra wait for flyTo animation to finish
+  await page.waitForTimeout(2000)
 
-  // Click on the canvas center where our station should be
+  // Click center and nearby — at this zoom, unclustered markers should be everywhere
   const canvas = page.locator('canvas')
   const box = await canvas.boundingBox()
   if (box) {
     const cx = box.x + box.width / 2
     const cy = box.y + box.height / 2
-    // Try clicking at center and nearby points
     const detailLink = page.locator('a', { hasText: 'Voir le détail' })
-    const points = [
-      [0, 0], [-20, -15], [20, 15], [-30, 10], [30, -10],
-      [0, -25], [0, 25], [-15, -25], [15, 25], [-40, 0], [40, 0],
-    ]
-    for (const [dx, dy] of points) {
+    for (const [dx, dy] of [[0,0], [5,-5], [-5,5], [15,0], [-15,0], [0,15], [0,-15], [25,10], [-25,-10], [35,0], [-35,0], [0,30], [0,-30]]) {
       await page.mouse.click(cx + dx, cy + dy)
-      await page.waitForTimeout(800)
+      await page.waitForTimeout(400)
       if (await detailLink.count() > 0) break
     }
   }
@@ -206,52 +207,57 @@ test('06 - fiche station', async ({ page }) => {
 //  07. PAGE DETAIL — Navigate to real station (GIF)
 // ─────────────────────────────────────────────
 test('07 - page detail station', async ({ page }) => {
-  // Find a real station with classification data from the GeoJSON
+  // Find a station with recent data (derniere_mesure in current year) for rich charts
   let code: string | null = null
   let stationType = 'piezo'
+  const currentYear = new Date().getFullYear().toString()
 
   try {
     const response = await page.request.get('/api/v1/common/stations/geojson')
     const data = await response.json()
     if (data?.features?.length > 0) {
-      // Pick a station with a classification (not UNKNOWN) for a rich detail page
       const feat = data.features.find((f: any) =>
         f.properties.type === 'piezo' &&
         f.properties.classification &&
-        f.properties.classification !== 'UNKNOWN'
+        f.properties.classification !== 'UNKNOWN' &&
+        f.properties.derniere_mesure?.startsWith(currentYear)
+      ) || data.features.find((f: any) =>
+        f.properties.classification && f.properties.classification !== 'UNKNOWN'
       ) || data.features[0]
       code = feat.properties.code
       stationType = feat.properties.type
     }
   } catch { /* skip */ }
 
-  if (!code) {
-    // Fallback: try list endpoint
-    try {
-      const response = await page.request.get('/api/v1/piezo/stations?limit=1')
-      const data = await response.json()
-      if (Array.isArray(data) && data.length > 0) {
-        code = data[0].code_bss
-      }
-    } catch { /* skip */ }
-  }
-
   await page.goto(`/station/${stationType}/${code || 'BSS000AARC'}`)
 
-  // Wait for charts to render
+  // Wait for page content + charts
+  await page.waitForSelector('h1, h2', { timeout: 10_000 })
   try {
-    await page.waitForSelector('.recharts-wrapper', { timeout: 15_000 })
+    await page.waitForSelector('.recharts-wrapper', { timeout: 20_000 })
     await page.waitForTimeout(2000)
   } catch {
     await page.waitForTimeout(5000)
   }
 
+  // Screenshot the top (KPI cards + station info)
   await screenshot(page, '07-detail-station')
 
-  // Scroll to see more charts
-  await page.evaluate(() => window.scrollBy(0, 600))
-  await page.waitForTimeout(1500)
+  // Scroll the page container (div.overflow-y-auto) to show charts
+  await page.evaluate(() => {
+    const container = document.querySelector('.overflow-y-auto')
+    if (container) container.scrollTop = 700
+  })
+  await page.waitForTimeout(2000)
   await screenshot(page, '07-detail-charts')
+
+  // Scroll further for drought index charts
+  await page.evaluate(() => {
+    const container = document.querySelector('.overflow-y-auto')
+    if (container) container.scrollTop = 1400
+  })
+  await page.waitForTimeout(1500)
+  await screenshot(page, '07-detail-drought')
 })
 
 // ─────────────────────────────────────────────
