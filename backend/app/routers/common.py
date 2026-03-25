@@ -64,7 +64,7 @@ async def get_stations_geojson(
                    libelle_station AS commune,
                    code_departement, nom_departement AS departement,
                    classification_resultat_dern_annee AS classification,
-                   LEFT(code_cours_eau, 1) AS code_district, derniere_mesure,
+                   LEFT(code_cours_eau, 1) AS code_district, code_site, derniere_mesure,
                    nb_jours_total
             FROM gold.dim_hydro_stations
             WHERE latitude_station IS NOT NULL AND longitude_station IS NOT NULL
@@ -119,6 +119,7 @@ async def get_stations_geojson(
                         "commune": r["commune"], "departement": r["departement"],
                         "code_departement": r["code_departement"],
                         "code_district": r["code_district"],
+                        "code_site": r["code_site"],
                         "derniere_mesure": str(r["derniere_mesure"]) if r["derniere_mesure"] else None,
                         "nb_observations": r["nb_jours_total"],
                     },

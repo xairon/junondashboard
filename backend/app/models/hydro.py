@@ -114,4 +114,5 @@ class HydroSiteSiblings(BaseModel):
     code_site: str
     libelle_site: str | None = None
     nom_cours_eau: str | None = None
+    nb_stations: int
     siblings: list[HydroSiblingStation]

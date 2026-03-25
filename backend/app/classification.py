@@ -38,20 +38,30 @@ async def get_classification_lookup() -> dict[str, dict[str, str]] | None:
 
 
 async def warm_classification_cache() -> None:
-    """Compute classifications for all stations and cache in Redis."""
-    logger.info("Computing drought classifications for all stations...")
-    try:
-        result = await _compute_all_classifications()
-        r = get_redis()
-        if r is not None:
-            await r.setex(CLASSIFICATION_KEY, CLASSIFICATION_TTL, json.dumps(result))
-        logger.info(
-            "Classifications cached: %d piezo, %d hydro",
-            len(result.get("piezo", {})),
-            len(result.get("hydro", {})),
-        )
-    except Exception:
-        logger.exception("Failed to compute classifications")
+    """Compute classifications for all stations and cache in Redis.
+
+    Runs once immediately, then re-computes every CLASSIFICATION_TTL * 0.9
+    seconds so the cache never expires.
+    """
+    while True:
+        logger.info("Computing drought classifications for all stations...")
+        try:
+            result = await _compute_all_classifications()
+            r = get_redis()
+            if r is not None:
+                await r.setex(CLASSIFICATION_KEY, CLASSIFICATION_TTL, json.dumps(result))
+                # Invalidate GeoJSON cache so it rebuilds with fresh classifications
+                async for key in r.scan_iter("hydro:stations_geojson:*"):
+                    await r.delete(key)
+            logger.info(
+                "Classifications cached: %d piezo, %d hydro",
+                len(result.get("piezo", {})),
+                len(result.get("hydro", {})),
+            )
+        except Exception:
+            logger.exception("Failed to compute classifications")
+        # Re-compute at 90% of TTL so cache never goes cold
+        await asyncio.sleep(CLASSIFICATION_TTL * 0.9)
 
 
 def _compute_reliability(months: list[str]) -> str:

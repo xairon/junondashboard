@@ -373,6 +373,7 @@ async def get_siblings(
             "code_site": code_site,
             "libelle_site": row["libelle_site"],
             "nom_cours_eau": row["nom_cours_eau"],
+            "nb_stations": len(siblings) + 1,  # include the station itself
             "siblings": [
                 {
                     "code_station": s["code_station"],

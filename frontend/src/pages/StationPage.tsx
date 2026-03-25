@@ -536,7 +536,7 @@ export default function StationPage() {
           <section className="bg-gray-900/50 rounded-xl border border-white/5 p-4">
             <h2 className="text-sm font-semibold text-gray-300 mb-1 flex items-center gap-2">
               <Waves className="w-4 h-4" />
-              Site hydrométrique
+              Site hydrométrique · {hydroSiblings.nb_stations} stations
             </h2>
             <p className="text-xs text-gray-500 mb-3">
               {hydroSiblings.libelle_site || hydroSiblings.code_site}

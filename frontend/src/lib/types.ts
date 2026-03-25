@@ -125,6 +125,7 @@ export interface HydroSiteSiblings {
   code_site: string
   libelle_site: string | null
   nom_cours_eau: string | null
+  nb_stations: number
   siblings: HydroSiblingStation[]
 }
 
@@ -221,6 +222,7 @@ export interface StationGeoJSONProperties {
   code_departement: string | null
   codes_bdlisa?: string | null    // piezo only
   code_district?: string | null   // hydro only — first char of code_cours_eau
+  code_site?: string | null       // hydro only — hydrometric site code
   derniere_mesure: string | null
   nb_observations: number | null  // nb_mesures_total (piezo) or nb_jours_total (hydro)
   fiabilite?: 'fiable' | 'indicatif' | 'insuffisant'

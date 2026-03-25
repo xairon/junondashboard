@@ -345,13 +345,14 @@ export function StationDrawer({ code, type, onClose }: Props) {
         {!isPiezo && hydroSiblings.data && hydroSiblings.data.siblings.length > 0 && (
           <div className="bg-white/[0.03] rounded-lg p-3 border border-white/5">
             <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-2">
-              Site hydrométrique
+              Site hydrométrique · {hydroSiblings.data.nb_stations} stations
             </div>
             <p className="text-xs text-text-primary mb-2 font-medium">
               {hydroSiblings.data.libelle_site || hydroSiblings.data.code_site}
+              {hydroSiblings.data.nom_cours_eau ? ` · ${hydroSiblings.data.nom_cours_eau}` : ''}
             </p>
-            <div className="space-y-1">
-              {hydroSiblings.data.siblings.map(sib => (
+            <div className="space-y-1 max-h-32 overflow-y-auto">
+              {hydroSiblings.data.siblings.slice(0, 5).map(sib => (
                 <Link
                   key={sib.code_station}
                   to={`/station/hydro/${sib.code_station}`}
@@ -381,6 +382,14 @@ export function StationDrawer({ code, type, onClose }: Props) {
                 </Link>
               ))}
             </div>
+            {hydroSiblings.data.siblings.length > 5 && (
+              <Link
+                to={`/station/hydro/${stationCode}`}
+                className="text-[10px] text-accent-cyan hover:underline mt-1.5 block"
+              >
+                Voir les {hydroSiblings.data.nb_stations} stations →
+              </Link>
+            )}
           </div>
         )}
 
