@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import {
-  ComposedChart, Line, Scatter, XAxis, YAxis, CartesianGrid,
+  ComposedChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { CHART_TOOLTIP_STYLE } from '../../lib/types'
@@ -68,6 +68,7 @@ export function PastasTimeseriesChart({ data }: Props) {
           <YAxis
             tick={{ fill: '#9ca3af', fontSize: 11 }}
             stroke="transparent"
+            domain={['auto', 'auto']}
             label={{ value: 'm NGF', angle: -90, position: 'insideLeft', fill: '#9ca3af', fontSize: 11 }}
           />
           <Tooltip
@@ -78,11 +79,13 @@ export function PastasTimeseriesChart({ data }: Props) {
               name === 'simulated' ? 'Simulé' : 'Observé',
             ]}
           />
-          <Scatter
+          <Line
             dataKey="observed"
             name="observed"
-            fill="rgba(156,163,175,0.4)"
-            r={1.5}
+            stroke="transparent"
+            dot={{ r: 2, fill: '#9ca3af', strokeWidth: 0 }}
+            activeDot={{ r: 3, fill: '#9ca3af' }}
+            connectNulls={false}
             isAnimationActive={false}
           />
           <Line
