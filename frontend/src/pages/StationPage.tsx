@@ -7,6 +7,7 @@ import { usePiezoMonthly, useHydroMonthly, usePiezoDaily, useHydroDaily, usePiez
 import { StationKPICards } from '../components/station/StationKPICards'
 import { TimeseriesChart } from '../components/charts/TimeseriesChart'
 import { DroughtIndexChart } from '../components/charts/DroughtIndexChart'
+import { PastasSection } from '../components/station/PastasSection'
 import { api } from '../lib/api'
 import { CLASSIFICATION_COLORS } from '../lib/constants'
 import { formatDate } from '../lib/utils'
@@ -675,6 +676,9 @@ export default function StationPage() {
             )}
           </div>
         ) : null}
+
+        {/* PASTAS model (piezo only) */}
+        {isPiezo && <PastasSection code={code} />}
 
       </div>
     </div>

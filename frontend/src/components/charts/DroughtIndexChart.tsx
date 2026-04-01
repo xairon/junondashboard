@@ -10,12 +10,13 @@ interface DataPoint {
   value: number | null
   spli?: number | null
   ssfi?: number | null
+  sgi?: number | null
   classification: string
 }
 
 interface Props {
   data: DataPoint[]
-  indexKey: 'spi' | 'spli' | 'ssfi'
+  indexKey: 'spi' | 'spli' | 'ssfi' | 'sgi'
   label: string
 }
 

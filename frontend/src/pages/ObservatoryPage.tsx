@@ -12,6 +12,7 @@ import { useWfsLayer } from '../hooks/useWfsLayer'
 import type { StationGeoJSONFeature, WfsLayerId, ClassificationTimeline } from '../lib/types'
 import { TIMELINE_CLASSIFICATIONS } from '../lib/types'
 import { useFilters } from '../hooks/useFilters'
+import { usePastasCoverage } from '../hooks/usePastas'
 
 type Bbox = [number, number, number, number] // [minLon, minLat, maxLon, maxLat]
 
@@ -126,6 +127,14 @@ export default function ObservatoryPage() {
   const [showHydro, setShowHydro] = useState(true)
   const [showExcluded, setShowExcluded] = useState(false)
   const [showTerrain, setShowTerrain] = useState(false)
+
+  // PASTAS coverage for map filter
+  const { data: pastasCoverage } = usePastasCoverage()
+  const pastasAcceptableSet = useMemo(() => {
+    if (!pastasCoverage) return new Set<string>()
+    return new Set(pastasCoverage.filter(c => (c.evp ?? 0) >= 50).map(c => c.code_bss))
+  }, [pastasCoverage])
+
   const filteredFeatures = useMemo<StationGeoJSONFeature[]>(() => {
     const all = geojsonData?.features ?? []
     return all.filter(f => {
@@ -154,12 +163,16 @@ export default function ObservatoryPage() {
         if (fiab === 'indicatif' && !filters.showIndicatif) return false
         if (fiab === 'insuffisant' && !filters.showInsuffisant) return false
       }
+      // PASTAS model filter
+      if (filters.showPastasOnly && f.properties.type === 'piezo') {
+        if (!pastasAcceptableSet.has(f.properties.code)) return false
+      }
       if (spatialStationCodes?.length) {
         if (!spatialStationCodes.includes(f.properties.code)) return false
       }
       return true
     })
-  }, [geojsonData, showPiezo, showHydro, filters.activeOnly, filters.codeDepartement, filters.classification, filters.codeBdlisa, filters.lastMeasurementAfter, filters.minObservations, filters.showFiable, filters.showIndicatif, filters.showInsuffisant, spatialStationCodes])
+  }, [geojsonData, showPiezo, showHydro, filters.activeOnly, filters.codeDepartement, filters.classification, filters.codeBdlisa, filters.lastMeasurementAfter, filters.minObservations, filters.showFiable, filters.showIndicatif, filters.showInsuffisant, filters.showPastasOnly, pastasAcceptableSet, spatialStationCodes])
 
 
   // Single active zone layer (exclusive) — admin or WFS zonage

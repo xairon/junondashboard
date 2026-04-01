@@ -91,6 +91,7 @@ export function RightDrawer(props: Props) {
     props.filters.showFiable === false ||
     props.filters.showIndicatif === true ||
     props.filters.showInsuffisant === true ||
+    props.filters.showPastasOnly === true ||
     props.hasSpatialFilter
   )
 
@@ -105,6 +106,7 @@ export function RightDrawer(props: Props) {
     props.setFilter('fiable', undefined)
     props.setFilter('indicatif', undefined)
     props.setFilter('insuffisant', undefined)
+    props.setFilter('pastas', undefined)
     props.onResetSpatial?.()
   }
 
@@ -272,6 +274,19 @@ export function RightDrawer(props: Props) {
                 </label>
               </div>
             </div>
+
+            {/* PASTAS model filter */}
+            <label className="flex items-center gap-2 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={props.filters.showPastasOnly ?? false}
+                onChange={(e) => props.setFilter('pastas', e.target.checked ? 'true' : undefined)}
+                className="w-3.5 h-3.5 accent-purple-500 rounded"
+              />
+              <span className="text-xs text-text-secondary group-hover:text-text-primary transition-colors">
+                Modèle PASTAS <span className="text-text-secondary/60">(EVP &ge; 50%)</span>
+              </span>
+            </label>
 
             <label className="flex items-center gap-2 cursor-pointer group">
               <input

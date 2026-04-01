@@ -1,0 +1,105 @@
+import { useMemo, useState } from 'react'
+import {
+  ComposedChart, Line, Scatter, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer,
+} from 'recharts'
+import { CHART_TOOLTIP_STYLE } from '../../lib/types'
+import type { PastasTimeseriesPoint } from '../../lib/types'
+
+const PERIODS = [
+  { label: '5a', months: 60 },
+  { label: '10a', months: 120 },
+  { label: 'Max', months: Infinity },
+] as const
+
+interface Props {
+  data: PastasTimeseriesPoint[]
+}
+
+export function PastasTimeseriesChart({ data }: Props) {
+  const [period, setPeriod] = useState<number>(120)
+
+  const chartData = useMemo(() => {
+    let filtered = data
+    if (period !== Infinity) {
+      const cutoff = new Date()
+      cutoff.setMonth(cutoff.getMonth() - period)
+      const cutoffMs = cutoff.getTime()
+      filtered = data.filter(d => new Date(d.date).getTime() >= cutoffMs)
+    }
+    return filtered.map(d => ({
+      ...d,
+      observed: d.simulated != null && d.residuals != null
+        ? d.simulated + d.residuals
+        : null,
+    }))
+  }, [data, period])
+
+  if (!chartData.length) return null
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-text-primary">Modèle PASTAS — Observé vs Simulé</h3>
+        <div className="flex gap-1">
+          {PERIODS.map(({ label, months }) => (
+            <button
+              key={label}
+              onClick={() => setPeriod(months)}
+              aria-pressed={period === months}
+              className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                period === months
+                  ? 'bg-accent-cyan/20 text-accent-cyan'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={300}>
+        <ComposedChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+          <XAxis
+            dataKey="date"
+            tick={{ fill: '#9ca3af', fontSize: 11 }}
+            tickFormatter={(v: string) => {
+              const d = new Date(v)
+              return `${d.getMonth() + 1}/${String(d.getFullYear()).slice(2)}`
+            }}
+            stroke="transparent"
+          />
+          <YAxis
+            tick={{ fill: '#9ca3af', fontSize: 11 }}
+            stroke="transparent"
+            label={{ value: 'm NGF', angle: -90, position: 'insideLeft', fill: '#9ca3af', fontSize: 11 }}
+          />
+          <Tooltip
+            contentStyle={CHART_TOOLTIP_STYLE}
+            labelFormatter={(v: any) => new Date(v).toLocaleDateString('fr-FR', { year: 'numeric', month: 'long' })}
+            formatter={(value: any, name: any) => [
+              value != null ? Number(value).toFixed(2) : '—',
+              name === 'simulated' ? 'Simulé' : 'Observé',
+            ]}
+          />
+          <Scatter
+            dataKey="observed"
+            name="observed"
+            fill="rgba(156,163,175,0.4)"
+            r={1.5}
+            isAnimationActive={false}
+          />
+          <Line
+            dataKey="simulated"
+            name="simulated"
+            stroke="#06b6d4"
+            strokeWidth={1.5}
+            dot={false}
+            isAnimationActive={false}
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}

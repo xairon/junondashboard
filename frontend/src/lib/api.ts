@@ -10,6 +10,7 @@ import type {
   StationGeoJSON, ClassificationTimeline,
   SPIDataPoint, SPLIDataPoint, SSFIDataPoint,
   PiezoBasinSiblings, HydroSiteSiblings,
+  PastasSummary, PastasTimeseriesPoint, PastasSGIPoint, PastasCoverage,
 } from './types'
 
 async function fetchJson<T>(path: string, params?: Record<string, string | string[] | undefined>): Promise<T> {
@@ -95,5 +96,15 @@ export const api = {
   bdlisa: {
     entity: (code: string) =>
       fetchJson<{ polygon: GeoJSON.MultiPolygon; code: string; denomination: string | null; nature: string | null }>(`/bdlisa/entity`, { code }),
+  },
+  pastas: {
+    summary: (code: string) =>
+      fetchJson<PastasSummary>(`/pastas/stations/${code}/summary`),
+    timeseries: (code: string, params?: Record<string, string | undefined>) =>
+      fetchJson<PastasTimeseriesPoint[]>(`/pastas/stations/${code}/timeseries`, params),
+    sgi: (code: string) =>
+      fetchJson<PastasSGIPoint[]>(`/pastas/stations/${code}/sgi`),
+    coverage: () =>
+      fetchJson<PastasCoverage[]>('/pastas/coverage'),
   },
 }

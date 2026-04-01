@@ -32,6 +32,7 @@ export interface Filters {
   showFiable?: boolean       // default true
   showIndicatif?: boolean    // default false
   showInsuffisant?: boolean  // default false
+  showPastasOnly?: boolean   // default false — filter to stations with PASTAS model EVP >= 50%
 }
 
 export function useFilters() {
@@ -68,6 +69,7 @@ const filters = useMemo<Filters>(() => ({
     showFiable: searchParams.get('fiable') === 'false' ? false : true,
     showIndicatif: searchParams.get('indicatif') === 'true' ? true : false,
     showInsuffisant: searchParams.get('insuffisant') === 'true' ? true : false,
+    showPastasOnly: searchParams.get('pastas') === 'true' ? true : false,
   }), [searchParams])
 
   const setFilter = useCallback((key: string, value: string | string[] | undefined) => {

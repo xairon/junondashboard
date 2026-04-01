@@ -4,6 +4,7 @@ import { ClassificationBadge } from '../station/ClassificationBadge'
 import { formatNumber, formatDate } from '../../lib/utils'
 import { CLASSIFICATION_COLORS } from '../../lib/constants'
 import { usePiezoStationDetail, useHydroStationDetail, usePiezoSiblings, useHydroSiblings } from '../../hooks/useStations'
+import { usePastasSummary } from '../../hooks/usePastas'
 
 interface Props {
   code: string
@@ -73,6 +74,7 @@ export function StationDrawer({ code, type, onClose }: Props) {
     : (station as any)?.code_station ?? code
   const piezoSiblings = usePiezoSiblings(isPiezo ? stationCode : '')
   const hydroSiblings = useHydroSiblings(!isPiezo ? stationCode : '')
+  const { data: pastasSummary } = usePastasSummary(isPiezo ? stationCode : '')
 
   const content = (() => {
     if (isError) {
@@ -137,6 +139,17 @@ export function StationDrawer({ code, type, onClose }: Props) {
               }`}>
                 {recent ? 'Active' : 'Inactive'}
               </span>
+              {pastasSummary && (
+                <span
+                  className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                  style={{
+                    backgroundColor: (pastasSummary.evp ?? 0) >= 70 ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)',
+                    color: (pastasSummary.evp ?? 0) >= 70 ? '#10b981' : '#f59e0b',
+                  }}
+                >
+                  PASTAS {pastasSummary.evp != null ? `${pastasSummary.evp.toFixed(0)}%` : ''}
+                </span>
+              )}
             </div>
             <h3 className="text-base font-semibold text-text-primary mt-1.5 break-words leading-tight">{name}</h3>
             <p className="text-xs text-text-secondary mt-0.5">{dept} · {stationCode}</p>

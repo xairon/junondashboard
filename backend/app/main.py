@@ -13,7 +13,7 @@ from app.classification import warm_classification_cache
 from app.config import settings
 from app.database import engine, get_db
 from app.json_response import FastJSONResponse
-from app.routers import piezo, hydro, common, era5, wfs, bdlisa
+from app.routers import piezo, hydro, common, era5, wfs, bdlisa, pastas
 
 
 @asynccontextmanager
@@ -60,6 +60,7 @@ app.include_router(common.router)
 app.include_router(era5.router)
 app.include_router(wfs.router)
 app.include_router(bdlisa.router)
+app.include_router(pastas.router)
 
 
 @app.get("/api/v1/health")

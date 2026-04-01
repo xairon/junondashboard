@@ -303,3 +303,56 @@ export interface WfsLayerConfig {
   color: string
   tooltipFields: string[]
 }
+
+// PASTAS model types
+export interface PastasSummary {
+  code_bss: string
+  evp: number | null
+  nash: number | null
+  kge: number | null
+  rmse: number | null
+  r2: number | null
+  tmax_days: number | null
+  cutoff_95_days: number | null
+  gain: number | null
+  mean_response_time: number | null
+  block_response: number[] | null
+  autocorr_time: number | null
+  recession_constant: number | null
+  recovery_constant: number | null
+  parde_seasonality: number | null
+  avg_seasonal_fluctuation: number | null
+  colwell_constancy: number | null
+  duration_curve_slope: number | null
+  baselevel_index: number | null
+  series_start: string | null
+  series_end: string | null
+  series_length_days: number | null
+  n_observations: number | null
+  fitted_at: string | null
+  pastas_version: string | null
+}
+
+export interface PastasTimeseriesPoint {
+  date: string
+  simulated: number | null
+  residuals: number | null
+  recharge_contribution: number | null
+  wb_recharge: number | null
+  wb_actual_evaporation: number | null
+  wb_surface_runoff: number | null
+  wb_effective_precip: number | null
+}
+
+export interface PastasSGIPoint {
+  date: string
+  sgi: number | null
+  classification: string
+}
+
+export interface PastasCoverage {
+  code_bss: string
+  evp: number | null
+  nash: number | null
+  tmax_days: number | null
+}
