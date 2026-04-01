@@ -336,6 +336,7 @@ export interface PastasSummary {
 export interface PastasTimeseriesPoint {
   date: string
   simulated: number | null
+  observed: number | null
   residuals: number | null
   recharge_contribution: number | null
   wb_recharge: number | null

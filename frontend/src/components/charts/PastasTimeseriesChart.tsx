@@ -27,12 +27,7 @@ export function PastasTimeseriesChart({ data }: Props) {
       const cutoffMs = cutoff.getTime()
       filtered = data.filter(d => new Date(d.date).getTime() >= cutoffMs)
     }
-    return filtered.map(d => ({
-      ...d,
-      observed: d.simulated != null && d.residuals != null
-        ? d.simulated + d.residuals
-        : null,
-    }))
+    return filtered
   }, [data, period])
 
   if (!chartData.length) return null

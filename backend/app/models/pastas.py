@@ -39,6 +39,7 @@ class PastasSummary(BaseModel):
 class PastasTimeseriesPoint(BaseModel):
     date: date
     simulated: float | None = None
+    observed: float | None = None
     residuals: float | None = None
     recharge_contribution: float | None = None
     wb_recharge: float | None = None

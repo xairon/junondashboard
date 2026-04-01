@@ -92,7 +92,9 @@ async def get_pastas_timeseries(
 
             where = " AND ".join(conditions)
             query = f"""
-                SELECT date, simulated, residuals, recharge_contribution,
+                SELECT date, simulated,
+                       simulated + residuals AS observed,
+                       residuals, recharge_contribution,
                        wb_recharge, wb_actual_evaporation, wb_surface_runoff, wb_effective_precip
                 FROM ml.pastas_model_timeseries
                 WHERE {where}
@@ -100,12 +102,15 @@ async def get_pastas_timeseries(
             """
         else:
             # Monthly aggregation
+            # observed (simulated + residuals) must be computed row-level before AVG
+            # because residuals are sparse (only on observation days)
             where = " AND ".join(conditions)
             query = f"""
                 SELECT
                     date_trunc('month', date)::date AS date,
                     AVG(simulated) AS simulated,
-                    AVG(residuals) AS residuals,
+                    AVG(simulated + residuals) AS observed,
+                    AVG(simulated + residuals) - AVG(simulated) AS residuals,
                     AVG(recharge_contribution) AS recharge_contribution,
                     SUM(wb_recharge) AS wb_recharge,
                     SUM(wb_actual_evaporation) AS wb_actual_evaporation,
